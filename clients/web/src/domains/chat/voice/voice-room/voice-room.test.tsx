@@ -486,6 +486,138 @@ describe("VoiceRoom: placement variants", () => {
   });
 });
 
+// The mobile sheet rests below the thread header instead of covering it. Radix
+// portals it out of the layout, so unlike the desktop panel it cannot inherit
+// that edge from the DOM and is positioned against a measured header height.
+describe("VoiceRoom: mobile sheet", () => {
+  /**
+   * Stand in for the real header so the sheet has an edge to rest below.
+   * `top` defaults non-zero because that is the real case: `root-layout.tsx`
+   * pads the app shell above the header by the notch inset, and stacks the iOS
+   * keyboard offset on top of that.
+   */
+  function mountHeader({ top = 47, height = 96 } = {}) {
+    const header = document.createElement("div");
+    header.setAttribute("data-slot", "chat-layout-header");
+    header.getBoundingClientRect = () =>
+      ({ height, width: 390, top, left: 0, bottom: top + height }) as DOMRect;
+    document.body.appendChild(header);
+    return () => header.remove();
+  }
+
+  test("rests at the header's bottom edge, not its height", () => {
+    // The sheet is `fixed` against the viewport, so the offset has to be the
+    // header's bottom in viewport coordinates. Positioning by height alone
+    // puts it above the notch inset and overlaps the header it should sit
+    // under, and the gap widens when the iOS keyboard shifts the shell down.
+    const removeHeader = mountHeader({ top: 47, height: 96 });
+    startOwnedSession("listening");
+    render(<VoiceRoom variant="sheet" />);
+
+    const sheet = screen.getByRole("dialog", { name: "Voice session" });
+    expect(sheet.getAttribute("data-slot")).toBe("bottom-sheet-content");
+    expect(sheet.style.getPropertyValue("--voice-sheet-top")).toBe("143px");
+    removeHeader();
+  });
+
+  test("a header flush to the viewport top offsets by its height", () => {
+    const removeHeader = mountHeader({ top: 0, height: 96 });
+    startOwnedSession("listening");
+    render(<VoiceRoom variant="sheet" />);
+
+    expect(
+      screen
+        .getByRole("dialog", { name: "Voice session" })
+        .style.getPropertyValue("--voice-sheet-top"),
+    ).toBe("96px");
+    removeHeader();
+  });
+
+  test("the sheet is unpadded, so the room reaches its rounded corners", () => {
+    // The room is a surface, not sheet content: a color fill inset by the
+    // primitive's default `px-4 pt-4` would leave a frame of sheet background
+    // around it.
+    const removeHeader = mountHeader();
+    startOwnedSession("listening");
+    const { container } = render(<VoiceRoom variant="sheet" />);
+
+    const inner = document.querySelector(
+      '[data-slot="bottom-sheet-content-inner"]',
+    );
+    expect(inner).not.toBeNull();
+    expect(inner?.className).not.toContain("px-4");
+    expect(container).toBeTruthy();
+    removeHeader();
+  });
+
+  test("the room fills the sheet without declaring a second dialog", () => {
+    // Radix's content element is the dialog. A nested role + label inside it
+    // would announce the room twice.
+    const removeHeader = mountHeader();
+    startOwnedSession("listening");
+    render(<VoiceRoom variant="sheet" />);
+
+    expect(screen.getAllByRole("dialog")).toHaveLength(1);
+    expect(screen.getByTestId("voice-avatar")).toBeTruthy();
+    removeHeader();
+  });
+
+  test("with no header present the sheet rests at the top edge", () => {
+    // Pop-outs render no header. They never show the room, but a zero offset
+    // is the right answer for a surface with nothing above it either way.
+    startOwnedSession("listening");
+    render(<VoiceRoom variant="sheet" />);
+
+    const sheet = screen.getByRole("dialog", { name: "Voice session" });
+    expect(sheet.style.getPropertyValue("--voice-sheet-top")).toBe("0px");
+  });
+
+  test("Escape minimizes, and does not end the session", () => {
+    const removeHeader = mountHeader();
+    startOwnedSession("listening");
+    render(<VoiceRoom variant="sheet" />);
+
+    act(() => {
+      fireEvent.keyDown(window, { key: "Escape" });
+    });
+
+    expect(useLiveVoiceStore.getState().roomMinimized).toBe(true);
+    expect(useLiveVoiceStore.getState().state).toBe("listening");
+    expect(controls.stop).not.toHaveBeenCalled();
+    removeHeader();
+  });
+
+  // The sheet rests below the thread header so that header stays usable. All
+  // three of Radix's modal reflexes would contradict that: the dim greys the
+  // header out, the focus trap makes it inert while still looking available,
+  // and dismiss-on-outside collapses the room the moment the user reaches for
+  // it.
+  test("is non-modal, so the header above it stays live", () => {
+    const removeHeader = mountHeader();
+    startOwnedSession("listening");
+    render(<VoiceRoom variant="sheet" />);
+
+    const sheet = screen.getByRole("dialog", { name: "Voice session" });
+    // Radix marks the page inert for modal dialogs only.
+    expect(document.body.getAttribute("aria-hidden")).toBeNull();
+    expect(sheet.getAttribute("data-state")).toBe("open");
+    removeHeader();
+  });
+
+  test("does not dim the page behind it", () => {
+    const removeHeader = mountHeader();
+    startOwnedSession("listening");
+    render(<VoiceRoom variant="sheet" />);
+
+    // Radix renders no overlay at all once `modal` is false, so there is
+    // nothing to grey out the thread header the sheet rests below.
+    expect(
+      document.querySelector('[data-slot="bottom-sheet-overlay"]'),
+    ).toBeNull();
+    removeHeader();
+  });
+});
+
 describe("VoiceRoom — listening waves", () => {
   const waves = () => screen.queryByTestId("listening-waves");
 
