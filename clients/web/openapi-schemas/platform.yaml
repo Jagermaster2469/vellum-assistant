@@ -6465,6 +6465,7 @@ components:
       enum:
       - macos
       - ios
+      - android
       - web
       - cli
       - electron
@@ -6472,6 +6473,7 @@ components:
       description: |-
         * `macos` - macOS
         * `ios` - iOS
+        * `android` - Android
         * `web` - Web
         * `cli` - CLI
         * `electron` - Electron
