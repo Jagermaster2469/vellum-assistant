@@ -79,7 +79,7 @@ import { toVoiceAvatarVisual } from "./voice-avatar-state";
 import { VoiceAmbientTranscript } from "./voice-ambient-transcript";
 import { VoiceRoomSettingsMenu } from "./voice-room-settings-menu";
 import { VoiceAvatar } from "./voice-avatar";
-import { VoiceListeningWaves } from "./voice-listening-waves";
+import { VoiceMeshWaves } from "./voice-mesh-waves";
 import { AVATAR_ENTER_SPRING } from "./voice-motion";
 import { VoiceRoomAmbientBackground } from "./voice-room-ambient-background";
 import {
@@ -267,7 +267,7 @@ function VoiceRoomOverlay() {
         <>
           <VoiceRoomAmbientBackground />
           {visual === "listening" ? (
-            <VoiceListeningWaves
+            <VoiceMeshWaves
               getAmplitude={getLiveVoiceInputAmplitude}
               palette="accent"
               // Same top edge as the color look, above the centered avatar —
