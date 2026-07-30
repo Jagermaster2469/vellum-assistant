@@ -29527,6 +29527,11 @@ paths:
                           type: string
                         conversationStreamingMode:
                           type: string
+                        languageSelection:
+                          type: string
+                          enum:
+                            - manual
+                            - auto
                         credentialsGuide:
                           type: string
                       required:
