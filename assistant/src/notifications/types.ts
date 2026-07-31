@@ -183,5 +183,7 @@ export interface NotificationDecision {
   dedupeKey: string;
   confidence: number;
   fallbackUsed: boolean;
+  /** Set by deterministic pass-through branches whose copy is producer-supplied verbatim; exempts the copy from the event-name-collision quality check. */
+  verbatimCopy?: boolean;
   persistedDecisionId?: string;
 }
