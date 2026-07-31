@@ -33,6 +33,7 @@ public class MainActivity extends BridgeActivity {
         }
         configureServer(pendingConnect == null ? SelfHostedServer.configured(this) : pendingConnect.server());
         registerPlugin(NativeAuthPlugin.class);
+        registerPlugin(NativeBiometricPlugin.class);
         super.onCreate(savedInstanceState);
         if (bridge != null) {
             bridge.setWebViewClient(new SelfHostedWebViewClient(bridge, this));

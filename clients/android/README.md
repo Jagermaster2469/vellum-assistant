@@ -90,6 +90,18 @@ If a saved or newly scanned server cannot load, the native recovery dialog can
 retry it or clear the saved server and return to Vellum Cloud. A failed new
 server is never promoted over the last server that loaded successfully.
 
+## Biometric Session Recovery
+
+The `NativeBiometric` plugin implements the same Capacitor contract as iOS.
+It protects server-keyed session tokens with Android Keystore AES-GCM keys and
+requires an enrolled strong biometric to store or retrieve a token. Deletion
+removes the ciphertext and key immediately so sign-out cannot retain recovery
+material. Enrollment changes invalidate the key and remove unusable
+ciphertext.
+
+Stored preferences contain only an encrypted payload and IV. Android backups
+are disabled, and token values are never written to logs or crash metadata.
+
 ## Structure
 
 ```
@@ -107,6 +119,8 @@ clients/
     │       │   ├── ConnectDeepLink.java
     │       │   ├── MainActivity.java
     │       │   ├── NativeAuthPlugin.java
+    │       │   ├── NativeBiometricPlugin.java
+    │       │   ├── BiometricTokenStore.java
     │       │   ├── SelfHostedServer.java
     │       │   └── WorkOSAuth.java
     │       └── res/              # Vellum icon, splash, colors, file paths
