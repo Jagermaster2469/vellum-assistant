@@ -59,6 +59,17 @@ extension VoiceSessionAttributes.ContentState {
         isStale ? "" : label
     }
 
+    /// The activity line to render, or nothing when there is none and once the
+    /// content has gone stale.
+    ///
+    /// Stale drops it for the same reason it drops the phase label, only more
+    /// so: "Reading a file" is a claim about work happening *right now*, which
+    /// makes it the sentence on the island most likely to be a lie once
+    /// nothing is driving updates any more.
+    func displayDetail(isStale: Bool) -> String {
+        isStale ? "" : detail
+    }
+
     /// The SF Symbol standing for this phase.
     ///
     /// **A glyph is not copy, which is why this may switch on `phase` when
@@ -222,12 +233,11 @@ struct VoiceAccentBadge: View {
     }
 }
 
-/// The identity mark for the two tightest slots, the compact leading and the
-/// minimal presentation: the avatar if there is one, the accent waveform if
-/// not.
+/// The identity mark for the compact leading slot: the avatar if there is one,
+/// the accent waveform if not.
 ///
-/// Sized rather than left to the slot because these are the only presentations
-/// iOS renders inline with the status bar, where an unconstrained image would
+/// Sized rather than left to the slot because the inline presentations are the
+/// ones iOS renders against the status bar, where an unconstrained image would
 /// be laid out against the whole island rather than its own corner.
 struct VoiceCompactIdentity: View {
     let accent: Color
@@ -238,6 +248,33 @@ struct VoiceCompactIdentity: View {
             VoiceAvatarImage(image: image, diameter: 20)
         } else {
             VoiceAccentGlyph(accent: accent, scale: .small)
+        }
+    }
+}
+
+/// The minimal presentation: the phase glyph, falling back to the identity
+/// mark once the content is stale.
+///
+/// The fallback is what keeps this slot from rendering nothing at all.
+/// ``VoicePhaseGlyph`` draws no view when stale, which is correct wherever
+/// something else remains on screen, and wrong here: this circle *is* the whole
+/// island in the shared presentation, so an empty one reads as a broken app
+/// rather than as an activity with nothing to claim. Identity is the right
+/// thing to fall back to, for the same reason the Lock Screen keeps the avatar
+/// and drops the phase: the session's existence is not the part in doubt.
+struct VoiceMinimalPresentation: View {
+    let state: VoiceSessionAttributes.ContentState
+    let isStale: Bool
+    var avatarImageData: Data?
+
+    var body: some View {
+        if isStale {
+            VoiceCompactIdentity(
+                accent: state.accentColor,
+                avatarImageData: avatarImageData
+            )
+        } else {
+            VoicePhaseGlyph(state: state, isStale: false, scale: .small)
         }
     }
 }
@@ -301,7 +338,8 @@ struct VoiceSessionLockScreenView: View {
     var avatarImageData: Data?
 
     var body: some View {
-        HStack(spacing: 12) {
+        let detail = state.displayDetail(isStale: isStale)
+        return HStack(spacing: 12) {
             VoiceAccentBadge(accent: state.accentColor, avatarImageData: avatarImageData)
             VStack(alignment: .leading, spacing: 2) {
                 VoiceSessionText(text: assistantName, font: .headline)
@@ -310,6 +348,20 @@ struct VoiceSessionLockScreenView: View {
                     VoiceSessionText(
                         text: state.displayLabel(isStale: isStale),
                         color: .secondary
+                    )
+                }
+                // The activity line, when there is one. Below the phase rather
+                // than replacing it: the two answer different questions ("is
+                // it my turn to talk" and "what is it doing"), and a turn that
+                // is thinking *and* reading a file is both.
+                //
+                // Absent rather than blank when empty, so an idle session's
+                // card is two lines tall instead of two lines and a gap.
+                if !detail.isEmpty {
+                    VoiceSessionText(
+                        text: detail,
+                        font: .caption,
+                        color: .tertiary
                     )
                 }
             }
