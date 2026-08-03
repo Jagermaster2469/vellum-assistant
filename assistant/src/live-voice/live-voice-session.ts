@@ -491,6 +491,10 @@ interface ActiveAssistantTurn {
   // map to the same line sends one frame rather than one per call. Empty means
   // the client believes nothing is running, which is also where a turn ends.
   activityLabel: string;
+  // Set while the turn is blocked on a decision the user has to make. Suppresses
+  // progress narration, whose entire vocabulary ("still on it", "almost there")
+  // describes work in flight and would be false here.
+  awaitingApproval: boolean;
   // A tts_audio frame actually went out to the client — latches on the first
   // forwarded chunk so the firstTtsAudio metric is marked exactly once per turn.
   ttsAudioStarted: boolean;
@@ -650,6 +654,12 @@ function createControlMarkerHoldback(
 // barge-in, the interruption merge note is appended to it (see
 // buildInterruptionMergeNote) so the model reconciles the interrupted request
 // with the new utterance.
+// Spoken once when a turn starts waiting on the user's decision. Fixed rather
+// than generated: this is a statement about the system's state, not about the
+// work, and it has to be true every time. Kept in the shape of the progress
+// phrases it displaces (short, neutral, no claim about tools).
+const APPROVAL_PENDING_PHRASE = "I need your okay for that one. Take a look.";
+
 const LIVE_VOICE_CONTROL_PROMPT_BASE =
   "You are speaking in a local live voice session. Keep replies brief and conversational. Speech is the main channel: say the answer, and do not narrate a surface instead of answering. You can also put something on screen when it genuinely helps (a form, a list to pick from, a progress card for long work); the call overlay minimizes by itself once you finish speaking, so the user sees it without doing anything. Never tell the user you cannot show them something. ";
 
@@ -2340,6 +2350,41 @@ export class LiveVoiceSession implements LiveVoiceSessionContract {
   }
 
   /**
+   * Open the room because a decision is waiting behind it.
+   *
+   * The approval card renders in the app, and the room covers the app, so
+   * without this the turn simply goes quiet: nothing is spoken, nothing is
+   * visible, and the only cue is a call that stopped talking. Sent
+   * immediately rather than latched for the drain the way a shown surface is,
+   * because there is no drain coming. The turn is blocked on this decision,
+   * and the whole point is that the user can make it now.
+   *
+   * The latch is cleared as well, so a turn that also showed a surface does
+   * not send a second minimize once its speech ends; the room is already open.
+   */
+  private revealRoomForPendingApproval(turn: ActiveAssistantTurn): void {
+    if (turn.awaitingApproval) {
+      return;
+    }
+    turn.awaitingApproval = true;
+    turn.minimizeRequested = false;
+    void this.sendFrame(
+      { type: "minimize_room", turnId: turn.turnId },
+      () => !this.isClosed,
+    );
+    // Spoken, because opening the room is only a cue for someone looking at
+    // the screen, and the case this exists for is a phone the user has put
+    // down. One line, not narration: the turn is not working, it is waiting,
+    // and it says which.
+    this.enqueueFillerPhrase(turn, APPROVAL_PENDING_PHRASE);
+  }
+
+  /** Clear the wait once a decision lands, so the turn narrates normally again. */
+  private clearAwaitingApproval(turn: ActiveAssistantTurn): void {
+    turn.awaitingApproval = false;
+  }
+
+  /**
    * Tell the client what the turn is doing, if it changed.
    *
    * De-duplicated for the same reason the Live Activity reporter de-duplicates
@@ -3454,6 +3499,7 @@ export class LiveVoiceSession implements LiveVoiceSessionContract {
       ttsDone: false,
       minimizeRequested: false,
       activityLabel: "",
+      awaitingApproval: false,
       ttsAudioStarted: false,
       finalized: false,
       speculativePending: opts?.speculative === true,
@@ -3655,6 +3701,12 @@ export class LiveVoiceSession implements LiveVoiceSessionContract {
         voiceControlPrompt: buildVoiceControlPrompt(activeTurn, {
           ...(leg.frontDoor !== undefined ? { frontDoor: leg.frontDoor } : {}),
         }),
+        onApprovalPending: () => {
+          this.revealRoomForPendingApproval(activeTurn);
+        },
+        onApprovalsResolved: () => {
+          this.clearAwaitingApproval(activeTurn);
+        },
         content: leg.content,
         isInbound: true,
         launchedAtMs: activeTurn.launchedAtMs,
@@ -4327,6 +4379,10 @@ export class LiveVoiceSession implements LiveVoiceSessionContract {
     return (
       this.isActiveAssistantTurn(turn.token) &&
       !turn.assistantCompleted &&
+      // Nothing is in flight while a decision is pending, so every phrase
+      // narration has would be a lie about who the call is waiting on. The
+      // turn says so once, when it starts waiting, and is quiet after that.
+      !turn.awaitingApproval &&
       this.turnAudioIdle(turn)
     );
   }

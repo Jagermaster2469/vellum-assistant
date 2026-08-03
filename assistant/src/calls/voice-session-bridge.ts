@@ -40,6 +40,7 @@ import { getCurrentSeq } from "../runtime/assistant-stream-state.js";
 import { publishConversationMessagesChanged } from "../runtime/sync/resource-sync-events.js";
 import { computeToolApprovalDigest } from "../security/tool-approval-digest.js";
 import { getAllTools } from "../tools/registry.js";
+import { sensitiveToolReach } from "../tools/tool-approval-handler.js";
 import { createAbortReason } from "../util/abort-reasons.js";
 import { getLogger } from "../util/logger.js";
 import { truncate } from "../util/truncate.js";
@@ -286,6 +287,28 @@ export interface VoiceTurnOptions {
   onError?: (message: string) => void;
   /** Event-name callbacks used by non-phone voice clients. */
   callbacks?: VoiceTurnCallbacks;
+  /**
+   * Called when this turn leaves a confirmation for the user to answer instead
+   * of deciding it, so the client can put the prompt where they can see it.
+   *
+   * A voice client renders its call as something that covers the app (the
+   * live-voice room is a full-screen overlay), which is fine while the call is
+   * the only thing happening and wrong the moment the turn is waiting on a
+   * decision: the card is on screen, behind the call. The bridge cannot reach
+   * a client's own surfaces, so it says *that a decision is waiting* and the
+   * client decides what to do about it.
+   */
+  onApprovalPending?: (requestId: string) => void;
+  /**
+   * Called when the last pending confirmation this turn was waiting on is
+   * decided, however it was decided (the user answered, it timed out, a newer
+   * message superseded it). Paired with {@link onApprovalPending} so a client
+   * that changed its presentation for the wait can change it back.
+   *
+   * Fires on the *last* one, not each: a turn waiting on two decisions is
+   * still waiting after the first is answered.
+   */
+  onApprovalsResolved?: () => void;
   /** Optional AbortSignal for external cancellation (e.g. barge-in). */
   signal?: AbortSignal;
   /**
@@ -378,6 +401,16 @@ export interface VoiceTurnHandle {
  * to a third party mid-call is a different problem, and one a minimized room
  * does not solve.
  */
+/**
+ * How long a live-voice call waits on an approval before deciding it itself.
+ *
+ * Long enough to pick the phone up and read the card, short enough that a turn
+ * cannot sit blocked for the rest of the call. The fallback is the decision
+ * this channel made before it prompted at all, so the worst case of nobody
+ * answering is exactly the old behavior, arrived at late.
+ */
+const VOICE_APPROVAL_TIMEOUT_MS = 45_000;
+
 export const VOICE_NO_SETUP_FLOWS_RULE =
   "Never start account connections, OAuth or sign-in flows, or any other action that opens a browser window or needs the user's screen during this call — not even through shell or CLI tools. If the task needs one, say so briefly and offer to finish it in text chat after the call.";
 
@@ -856,7 +889,37 @@ export async function startVoiceTurn(
   // (tracked via `clientCallbackInstalled`); otherwise cleanup would detach
   // an active sender installed by a prior turn.
   let clientCallbackInstalled = false;
+  /**
+   * Confirmations this voice turn left pending for the user to answer, and the
+   * timers that stop them waiting forever.
+   *
+   * A call is a poor place to block: the user may have put the phone in a
+   * pocket, and a turn that waits indefinitely is a session that looks wedged.
+   * Each pending request therefore carries a deadline, after which it resolves
+   * the way this channel resolved everything before it prompted at all.
+   */
+  const pendingVoiceApprovals = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
+  const settleVoiceApproval = (requestId: string): void => {
+    const timer = pendingVoiceApprovals.get(requestId);
+    if (timer === undefined) {
+      // Not one of ours: other interactions (secrets, host-proxy requests)
+      // resolve through the same event.
+      return;
+    }
+    clearTimeout(timer);
+    pendingVoiceApprovals.delete(requestId);
+    if (pendingVoiceApprovals.size === 0) {
+      opts.onApprovalsResolved?.();
+    }
+  };
   const cleanup = () => {
+    for (const timer of pendingVoiceApprovals.values()) {
+      clearTimeout(timer);
+    }
+    pendingVoiceApprovals.clear();
     conversation.setChannelCapabilities(null);
     conversation.setTrustContext(null);
     conversation.setCommandIntent(null);
@@ -1116,6 +1179,11 @@ export async function startVoiceTurn(
   // Voice auto-denies/auto-allows/auto-resolves these since there's no interactive UI.
   let lastError: string | null = null;
   conversation.updateClient(async (msg: AssistantEvent) => {
+    // The user (or anything else) answered: stop the fallback from firing on a
+    // request that is already decided.
+    if (msg.type === "interaction_resolved") {
+      settleVoiceApproval(msg.requestId);
+    }
     if (msg.type === "confirmation_request") {
       // Broadcast the request BEFORE resolving it: resolution synchronously
       // broadcasts `interaction_resolved` (handleConfirmationResponse →
@@ -1192,6 +1260,71 @@ export async function startVoiceTurn(
         });
         return;
       }
+      // A live-voice call has a screen, so a consequential action can be put
+      // to the user instead of decided for them.
+      //
+      // Everything used to be allowed here on the strength of the caller being
+      // a guardian, which made a voice call the one surface where a tool that
+      // writes to the workspace or reaches the host never had to ask. Only
+      // *sensitive* reach prompts: gating every confirmation would interrupt a
+      // conversation constantly, and the tools that read or render were never
+      // the reason approval exists.
+      //
+      // Phone keeps the old behavior in full. There is no screen on that
+      // channel, so a prompt there is a question nobody can answer.
+      // The workspace root is what makes an escape visible. A sandbox file
+      // tool pointed outside the workspace reaches the host filesystem on a
+      // non-containerized install, and `sensitiveToolReach` can only see that
+      // when it is given the boundary to compare against: without it,
+      // `file_read { path: "/etc/hosts" }` classifies as `none` and would fall
+      // through to the auto-allow this branch exists to prevent.
+      const workspaceRoot = conversation.workingDir;
+      const reach = sensitiveToolReach(
+        msg.toolName,
+        // Absent on requests that do not come from the tool pipeline (proxy
+        // and network prompters). Unknown reads as the more consequential of
+        // the two: the cost of being wrong is a prompt the user did not need,
+        // against an unreviewed action on their machine.
+        msg.executionTarget ?? "host",
+        msg.input,
+        workspaceRoot,
+      );
+      const canPrompt = turnChannelContext.userMessageChannel === "vellum";
+      // Fail closed on a missing boundary for the same reason: with no
+      // workspace root there is no way to tell an ordinary write from an
+      // escape, and the safe reading of "cannot tell" is "ask". A real
+      // conversation always has one, so this is a guard rather than a path.
+      if (canPrompt && (reach !== "none" || !workspaceRoot)) {
+        log.info(
+          { turnId, toolName: msg.toolName, reach },
+          "Prompting guardian voice caller for a sensitive tool",
+        );
+        // Left pending: the request is already broadcast, so the approval card
+        // an attached client renders is now answerable rather than cleared a
+        // moment later by this handler.
+        //
+        // Announced separately, because "a card exists" and "the user can see
+        // it" are different things on a channel whose call covers the app.
+        opts.onApprovalPending?.(msg.requestId);
+        const timer = setTimeout(() => {
+          pendingVoiceApprovals.delete(msg.requestId);
+          if (pendingVoiceApprovals.size === 0) {
+            opts.onApprovalsResolved?.();
+          }
+          log.info(
+            { turnId, toolName: msg.toolName },
+            "Voice approval timed out — falling back to the guardian allow",
+          );
+          conversation.handleConfirmationResponse(msg.requestId, "allow", {
+            decisionContext: `Permission approved for "${msg.toolName}": this is a verified guardian voice call and the approval prompt went unanswered.`,
+          });
+        }, VOICE_APPROVAL_TIMEOUT_MS);
+        // Never hold the process open for a prompt nobody is looking at.
+        timer.unref?.();
+        pendingVoiceApprovals.set(msg.requestId, timer);
+        return;
+      }
+
       log.info(
         { turnId, toolName: msg.toolName },
         "Auto-approving confirmation request for guardian voice turn",
