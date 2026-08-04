@@ -47,6 +47,8 @@ const importToolDetailPanel = () =>
   import("@/domains/chat/components/tool-detail-panel");
 const importActivityStepsPanel = () =>
   import("@/domains/chat/components/activity-steps-panel");
+const importMessageFilesPanel = () =>
+  import("@/domains/chat/components/message-files-panel");
 const importAcpRunDetailPanel = () =>
   import("@/domains/chat/components/acp-run-detail-panel/acp-run-detail-panel");
 const importWorkflowDetailPanel = () =>
@@ -70,6 +72,9 @@ const ToolDetailPanel = lazy(() =>
 );
 const ActivityStepsPanel = lazy(() =>
   importActivityStepsPanel().then((m) => ({ default: m.ActivityStepsPanel })),
+);
+const MessageFilesPanel = lazy(() =>
+  importMessageFilesPanel().then((m) => ({ default: m.MessageFilesPanel })),
 );
 const BackgroundTaskDetailPanel = lazy(() =>
   importBackgroundTaskDetailPanel().then((m) => ({
@@ -96,6 +101,8 @@ export function ChatContentLayout(props: ChatMainPanelProps) {
   const closeToolDetail = useViewerStore.use.closeToolDetail();
   const activeActivitySteps = useViewerStore.use.activeActivitySteps();
   const closeActivitySteps = useViewerStore.use.closeActivitySteps();
+  const activeMessageFiles = useViewerStore.use.activeMessageFiles();
+  const closeMessageFiles = useViewerStore.use.closeMessageFiles();
   // Subscribe to only the active subagent's entry rather than the whole `byId`
   // map, so streaming events from *other* subagents don't re-render the chat
   // layout (and the chat transcript it hosts) on every token.
@@ -314,6 +321,7 @@ export function ChatContentLayout(props: ChatMainPanelProps) {
       importSubagentDetailPanel().catch(() => {});
       importToolDetailPanel().catch(() => {});
       importActivityStepsPanel().catch(() => {});
+      importMessageFilesPanel().catch(() => {});
       importAcpRunDetailPanel().catch(() => {});
       importWorkflowDetailPanel().catch(() => {});
       importBackgroundTaskDetailPanel().catch(() => {});
@@ -486,6 +494,18 @@ export function ChatContentLayout(props: ChatMainPanelProps) {
             payload={activeActivitySteps}
             onClose={closeActivitySteps}
             assistantId={assistantId}
+          />
+        </LazyBoundary>
+      );
+    } else if (mainView === "message-files" && activeMessageFiles) {
+      rightPanel = (
+        <LazyBoundary>
+          <MessageFilesPanel
+            // Re-key per message so the panel resets when a different
+            // message's tile is clicked while the panel is already open.
+            key={activeMessageFiles.messageId}
+            payload={activeMessageFiles}
+            onClose={closeMessageFiles}
           />
         </LazyBoundary>
       );

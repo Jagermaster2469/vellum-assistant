@@ -2,10 +2,12 @@ import { beforeEach, describe, it, expect, mock } from "bun:test";
 
 import type {
   ActivityStepsPayload,
+  MessageFilesPayload,
   ToolDetailPayload,
 } from "@/stores/viewer-store";
 import type { DocumentsForworkspacefilePostResponse } from "@/generated/daemon/types.gen";
 import { ApiError } from "@/utils/api-errors";
+import { makeDisplayAttachment } from "@/domains/chat/components/chat-attachments/attachment-test-helpers";
 
 // The store opens file-backed documents through the daemon SDK. Spread the
 // real module so the actions this file does not exercise keep their real
@@ -617,6 +619,14 @@ describe("closeActiveOverlay", () => {
     expect(getState().activeWorkflowRunId).toBeNull();
   });
 
+  it("closes the message-files overlay and restores its prior view", () => {
+    getState().openMessageFiles({ messageId: "m1", attachments: [] });
+
+    expect(getState().closeActiveOverlay()).toBe(true);
+    expect(getState().mainView).toBe("chat");
+    expect(getState().activeMessageFiles).toBeNull();
+  });
+
   it("returns false without changing a non-overlay view", () => {
     useViewerStore.setState({ mainView: "app", activeAppId: "app-1" });
 
@@ -813,6 +823,66 @@ describe("openActivitySteps / toggleActivitySteps / closeActivitySteps", () => {
     expect(getState().viewBeforeActivitySteps).toBe("app");
     getState().closeActivitySteps();
     expect(getState().mainView).toBe("app");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Message files panel
+// ---------------------------------------------------------------------------
+
+const SAMPLE_FILES: MessageFilesPayload = {
+  messageId: "m1",
+  attachments: [
+    makeDisplayAttachment({ id: "a1" }),
+    makeDisplayAttachment({ id: "a2" }),
+  ],
+  assistantId: "asst-1",
+};
+
+describe("openMessageFiles / toggleMessageFiles / closeMessageFiles", () => {
+  it("opens the panel with the payload and records the prior view", () => {
+    getState().openMessageFiles(SAMPLE_FILES);
+    const state = getState();
+    expect(state.mainView).toBe("message-files");
+    expect(state.activeMessageFiles).toBe(SAMPLE_FILES);
+    expect(state.viewBeforeMessageFiles).toBe("chat");
+  });
+
+  it("close restores the prior view and clears the payload", () => {
+    useViewerStore.setState({ mainView: "app" });
+    getState().openMessageFiles(SAMPLE_FILES);
+    expect(getState().viewBeforeMessageFiles).toBe("app");
+    getState().closeMessageFiles();
+    const state = getState();
+    expect(state.mainView).toBe("app");
+    expect(state.activeMessageFiles).toBeNull();
+  });
+
+  it("toggle closes the panel when targeting the SAME message", () => {
+    getState().openMessageFiles(SAMPLE_FILES);
+    getState().toggleMessageFiles({ ...SAMPLE_FILES });
+    const state = getState();
+    expect(state.mainView).toBe("chat");
+    expect(state.activeMessageFiles).toBeNull();
+  });
+
+  it("toggle switches to a DIFFERENT message instead of closing", () => {
+    getState().openMessageFiles(SAMPLE_FILES);
+    getState().toggleMessageFiles({ ...SAMPLE_FILES, messageId: "m2" });
+    const state = getState();
+    expect(state.mainView).toBe("message-files");
+    expect(state.activeMessageFiles?.messageId).toBe("m2");
+  });
+
+  it("clears the transcript panel payloads without touching mainView", () => {
+    useViewerStore.setState({ mainView: "app" });
+    getState().openMessageFiles(SAMPLE_FILES);
+    getState().clearTranscriptPanelPayloads();
+    const state = getState();
+    expect(state.activeMessageFiles).toBeNull();
+    expect(state.activeActivitySteps).toBeNull();
+    expect(state.activeToolDetail).toBeNull();
+    expect(state.mainView).toBe("message-files");
   });
 });
 
