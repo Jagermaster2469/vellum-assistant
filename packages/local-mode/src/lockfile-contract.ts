@@ -77,6 +77,23 @@ export function resolveCloud(raw: {
 }
 
 /**
+ * Whether an entry's `runtimeUrl` is one a serving host can forward to: an
+ * absolute http(s) URL. Shared by the renderer's paired-gateway URL derivation
+ * and the host-side paired allowlist reader so the two can't drift.
+ */
+export function isUsableRuntimeUrl(url: unknown): boolean {
+  if (typeof url !== "string" || url === "") {
+    return false;
+  }
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Clouds whose gateway listens on a loopback port of this machine: the
  * on-machine daemon ("local") and local Docker instances ("docker").
  */
