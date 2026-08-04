@@ -226,6 +226,22 @@ export function OverridesDetailPanel({
     [tierEdits, persistedTierOverrides],
   );
 
+  // The default an unpinned row displays and toggle-on seeds from. A tier
+  // touched this session shows its pending edit optimistically; an
+  // untouched tier trusts the catalog's resolved winner (`defaultProfile`)
+  // rather than the raw persisted remap, which resolution may have skipped
+  // (disabled or incomplete target).
+  const displayedDefaultFor = useCallback(
+    (cs: CallSiteEntry): string | undefined => {
+      const shippedTier = cs.shippedDefaultProfile;
+      if (supportsTierOverrides && shippedTier && shippedTier in tierEdits) {
+        return tierEdits[shippedTier] ?? shippedTier;
+      }
+      return cs.defaultProfile;
+    },
+    [supportsTierOverrides, tierEdits],
+  );
+
   const tierOverridesDirty = useMemo(
     () =>
       Object.entries(tierEdits).some(
@@ -389,9 +405,11 @@ export function OverridesDetailPanel({
         return;
       }
       const cs = gatedCallSites.find((c) => c.id === id);
+      // Seed from the same default the row is displaying so the pin
+      // matches what the user sees.
       const seedProfile = selectSeedProfileForOverride(
         orderedProfiles,
-        cs?.defaultProfile,
+        cs ? displayedDefaultFor(cs) : undefined,
       );
       if (seedProfile) {
         setDraftEdits((prev) => ({ ...prev, [id]: { profile: seedProfile } }));
@@ -405,7 +423,12 @@ export function OverridesDetailPanel({
         }));
       }
     },
-    [gatedCallSites, orderedProfiles, selectableInferenceProviders],
+    [
+      gatedCallSites,
+      orderedProfiles,
+      selectableInferenceProviders,
+      displayedDefaultFor,
+    ],
   );
 
   // ---------------------------------------------------------------------------
@@ -723,22 +746,32 @@ export function OverridesDetailPanel({
                         }
                         return d.profile ?? "";
                       })();
-                      // Caption provenance for an unpinned site on a
-                      // tier-overrides daemon builds from the shipped tier
-                      // plus its remap; `defaultProfile` (the effective
-                      // winner) already IS the remapped profile there, so
-                      // deriving from it would lose the tier. A pinned
-                      // site keeps the winner caption: the pin outranks
-                      // the remap, so an arrow would claim an effect the
+                      // An unpinned site on a tier-overrides daemon whose
+                      // displayed default diverges from its shipped tier
+                      // renders that default in a ghost dropdown (picking
+                      // from it creates a pin) with tier provenance as the
+                      // caption. `displayedDefaultFor` trusts the resolver's
+                      // winner for untouched tiers, so a remap resolution
+                      // skipped never renders as if it applied. A pinned
+                      // site keeps the winner caption: the pin outranks the
+                      // remap, so tier provenance would claim an effect the
                       // resolver doesn't apply.
                       const pinned = isDraftActive(drafts[cs.id] ?? null);
                       const shippedTier = cs.shippedDefaultProfile;
                       let defaultProfileLabel: string | null = null;
+                      let ghost: { profile: string; caption: string } | null =
+                        null;
                       if (supportsTierOverrides && shippedTier && !pinned) {
-                        const tierRemap = effectiveTierRemap(shippedTier);
-                        defaultProfileLabel =
-                          profileLabelFor(shippedTier) +
-                          (tierRemap ? ` → ${profileLabelFor(tierRemap)}` : "");
+                        const displayed =
+                          displayedDefaultFor(cs) ?? shippedTier;
+                        if (displayed !== shippedTier) {
+                          ghost = {
+                            profile: displayed,
+                            caption: `via ${profileLabelFor(shippedTier)} default`,
+                          };
+                        } else {
+                          defaultProfileLabel = profileLabelFor(shippedTier);
+                        }
                       } else if (cs.defaultProfile) {
                         defaultProfileLabel = profileLabelFor(
                           cs.defaultProfile,
@@ -752,10 +785,11 @@ export function OverridesDetailPanel({
                           displayName={cs.displayName}
                           description={cs.description}
                           defaultProfileLabel={defaultProfileLabel}
+                          ghost={ghost}
                           draft={drafts[cs.id] ?? null}
                           profileOptions={buildProfileOptionsForRow(
                             profileVal === "" || profileVal === CUSTOM_SENTINEL
-                              ? null
+                              ? (ghost?.profile ?? null)
                               : profileVal,
                           )}
                           onDraftChange={handleDraftChange}
