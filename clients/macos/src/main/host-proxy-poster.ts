@@ -16,6 +16,9 @@
  */
 
 import { getDeviceId } from "./device-id";
+// Type-only, so this stays erased at compile time and the poster picks up no
+// runtime dependency on electron from the presence module.
+import type { PresenceState } from "./presence";
 
 // ---------------------------------------------------------------------------
 // Payload interfaces — match the daemon route request bodies
@@ -85,6 +88,10 @@ export interface HostAppControlResultPayload {
   windowBounds?: { x: number; y: number; width: number; height: number };
   executionResult?: string;
   executionError?: string;
+}
+
+export interface PresencePayload {
+  state: PresenceState;
 }
 
 // ---------------------------------------------------------------------------
@@ -183,27 +190,42 @@ export class HostProxyPoster {
     return this.postJson("/host-ui-snapshot-result", result);
   }
 
+  /**
+   * A 2xx only means the daemon accepted the request. It answers
+   * `{ recorded: false }` when it discarded the report (no connected client
+   * with this id, or the caller does not own that client), which is the
+   * silent-death mode for presence gating, so only a recorded report counts
+   * as success. A body it cannot read is treated the same way: unproven.
+   */
+  async postPresence(payload: PresencePayload): Promise<boolean> {
+    const recorded = await this.sendJson(
+      "/clients/presence",
+      payload,
+      async (res) => {
+        if (!res.ok) {
+          return false;
+        }
+        const body = (await res.json()) as { recorded?: unknown } | null;
+        return body?.recorded === true;
+      },
+    );
+    return recorded ?? false;
+  }
+
   // -----------------------------------------------------------------------
   // Transfer content methods
   // -----------------------------------------------------------------------
 
   async pullTransferContent(transferId: string): Promise<Buffer | null> {
     const url = `${this.endpointBase}/transfers/${encodeURIComponent(transferId)}/content`;
-    const res = await this.requestWithAuthRetry(() =>
-      this.fetchWithTimeout(
+    return this.requestWithAuthRetry(() =>
+      this.attemptWithTimeout(
         url,
         { method: "GET", headers: this.commonHeaders() },
         MIN_TIMEOUT_MS,
+        async (res) => (res.ok ? Buffer.from(await res.arrayBuffer()) : null),
       ),
     );
-    if (!res || !res.ok) {
-      return null;
-    }
-    try {
-      return Buffer.from(await res.arrayBuffer());
-    } catch {
-      return null;
-    }
   }
 
   async pushTransferContent(
@@ -213,17 +235,18 @@ export class HostProxyPoster {
   ): Promise<boolean> {
     const url = `${this.endpointBase}/transfers/${encodeURIComponent(transferId)}/content`;
     const timeout = computeTimeout(data.length);
-    const res = await this.requestWithAuthRetry(() => {
+    const ok = await this.requestWithAuthRetry(() => {
       const headers = this.commonHeaders();
       headers["Content-Type"] = "application/octet-stream";
       headers["X-Transfer-SHA256"] = sha256;
-      return this.fetchWithTimeout(
+      return this.attemptWithTimeout(
         url,
         { method: "PUT", headers, body: data },
         timeout,
+        async (res) => res.ok,
       );
     });
-    return res !== null && res.ok;
+    return ok ?? false;
   }
 
   // -----------------------------------------------------------------------
@@ -241,29 +264,55 @@ export class HostProxyPoster {
     path: string,
     payload: object,
   ): Promise<boolean> {
+    const ok = await this.sendJson(path, payload, async (res) => res.ok);
+    return ok ?? false;
+  }
+
+  /**
+   * POST a JSON body and let the caller interpret the response. `readResponse`
+   * runs per attempt while that attempt's timeout is still armed, so reading
+   * the body cannot hang past it. Resolves null if the request or the read
+   * fails.
+   */
+  private async sendJson<T>(
+    path: string,
+    payload: object,
+    readResponse: (res: Response) => Promise<T>,
+  ): Promise<T | null> {
     const body = JSON.stringify(payload);
     const timeout = computeTimeout(Buffer.byteLength(body, "utf-8"));
-    const res = await this.requestWithAuthRetry(() => {
+    return this.requestWithAuthRetry(() => {
       const headers = this.commonHeaders();
       headers["Content-Type"] = "application/json";
-      return this.fetchWithTimeout(
+      return this.attemptWithTimeout(
         `${this.endpointBase}${path}`,
         { method: "POST", headers, body },
         timeout,
+        readResponse,
       );
     });
-    return res !== null && res.ok;
   }
 
-  private async fetchWithTimeout(
+  /**
+   * Run one request attempt with the timeout armed across the whole attempt,
+   * the caller's response read included, so a stalled body cannot hang past
+   * it. The status comes back alongside the read value so a retry decision can
+   * be made after the timer is disarmed, without keeping the Response around.
+   */
+  private async attemptWithTimeout<T>(
     url: string,
     init: RequestInit,
     timeoutMs: number,
-  ): Promise<Response> {
+    readResponse: (res: Response) => Promise<T>,
+  ): Promise<{ status: number; value: T }> {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      return await this.fetchFn(url, { ...init, signal: controller.signal });
+      const res = await this.fetchFn(url, {
+        ...init,
+        signal: controller.signal,
+      });
+      return { status: res.status, value: await readResponse(res) };
     } finally {
       clearTimeout(timer);
     }
@@ -271,27 +320,27 @@ export class HostProxyPoster {
 
   /**
    * Perform a request; on a 401 refresh the bearer and retry exactly once.
-   * `makeRequest` runs per attempt so the retry rebuilds headers from the
-   * refreshed auth. Returns the final Response, or null when fetch threw.
+   * `attempt` runs per try so the retry rebuilds headers from the refreshed
+   * auth. Returns the final attempt's value, or null when it threw.
    */
-  private async requestWithAuthRetry(
-    makeRequest: () => Promise<Response>,
-  ): Promise<Response | null> {
-    let res: Response;
+  private async requestWithAuthRetry<T>(
+    attempt: () => Promise<{ status: number; value: T }>,
+  ): Promise<T | null> {
+    let outcome: { status: number; value: T };
     try {
-      res = await makeRequest();
+      outcome = await attempt();
     } catch {
       return null;
     }
-    if (res.status !== 401 || !this.refreshAuth) {
-      return res;
+    if (outcome.status !== 401 || !this.refreshAuth) {
+      return outcome.value;
     }
     const fresh = await this.refreshAuth().catch(() => null);
     if (!fresh) {
-      return res;
+      return outcome.value;
     }
     try {
-      return await makeRequest();
+      return (await attempt()).value;
     } catch {
       return null;
     }
