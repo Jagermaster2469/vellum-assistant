@@ -25,6 +25,7 @@ import { getDeviceId } from "./device-id";
 import { handleSync } from "./ipc";
 import { registerVellumAppProtocol } from "./vellumapp-protocol";
 import {
+  authorizePairedGatewayForwardPlan,
   executeGatewayForwardPlan,
   planGatewayForward,
   planPairedGatewayForward,
@@ -34,6 +35,7 @@ import {
   fetchForwardPlanWithRetry,
   planPlatformForward,
 } from "./platform-forward";
+import { installPairedGatewayRequestGuard } from "./paired-gateway-request-guard";
 import {
   extractDeepLinkFromArgv,
   handleDeepLink,
@@ -62,7 +64,11 @@ import { installImageContextMenu } from "./image-context-menu";
 import { installTextContextMenu } from "./text-context-menu";
 import { installPopoutWindows } from "./popout-window";
 import { installQuickInput } from "./quick-input-window";
-import { installLocalMode, resolveCliInvocation } from "./local-mode";
+import {
+  getPairedGuardianAccessToken,
+  installLocalMode,
+  resolveCliInvocation,
+} from "./local-mode";
 import { installLoginItem, installLoginItemIpc } from "./login-item";
 import {
   getWatchedLockfileSnapshot,
@@ -261,8 +267,8 @@ const registerAppProtocol = (): void => {
     // Paired remote gateways ride the same-origin path too, via
     // `/assistant/__gateway-paired/{assistantId}/*`: the packaged app's CSP
     // pins `connect-src` to Vellum origins, so the renderer cannot reach a
-    // paired gateway directly. The lockfile's paired entries are the
-    // allowlist.
+    // paired gateway directly. The WebRequest guard admits only trusted app
+    // frames, and the lockfile's paired entries allowlist the remote targets.
     const pairedProxied = await forwardPairedGatewayRequest(
       request,
       getPairedGatewayTargets,
@@ -336,12 +342,13 @@ const forwardGatewayRequest = async (
 const forwardPairedGatewayRequest = async (
   request: GlobalRequest,
   getTargets: () => Map<string, string>,
-): Promise<Response | null> =>
-  executeGatewayForwardPlan(
+): Promise<Response | null> => {
+  const plan = await authorizePairedGatewayForwardPlan(
     planPairedGatewayForward(request, getTargets),
-    request,
-    gatewayForwardFetcher,
+    getPairedGuardianAccessToken,
   );
+  return executeGatewayForwardPlan(plan, request, gatewayForwardFetcher);
+};
 
 const resolvedConfig = resolveLocalConfigFromEnv(process.env);
 handleSync("vellum:config:get", () => ({
@@ -430,6 +437,7 @@ app
 
     if (!isDev) {
       registerAppProtocol();
+      installPairedGatewayRequestGuard();
     }
     registerVellumAppProtocol(
       path.join(app.getPath("userData"), BUNDLES_DIR_NAME),
