@@ -1,25 +1,24 @@
 @import "tailwindcss";
 @import "@vellumai/design-library/tokens.css";
 
-/* Capacitor iOS shell variant. Keys off the data-native-platform marker
+/* Capacitor mobile shell variant. Keys off the data-native-platform marker
  * set by initNativePlatformAttributes() at boot. Deliberately :is(), not
  * :where(): the selector must carry :root[attr] specificity (0,3,0 with
- * the utility class) so native-ios: utilities outrank the design
+ * the utility class) so native-mobile: utilities outrank the design
  * library's touch-mobile: pill classes, which are single-class rules
  * inside a media query (0,1,0) and would otherwise win or lose on
  * emission order. */
-@custom-variant native-ios (&:is(:root[data-native-platform="ios"] *));
+@custom-variant native-mobile (&:is(:root[data-native-platform="ios"] *, :root[data-native-platform="android"] *));
 
 /* Base element styles — theme-aware defaults inherited by all descendants. */
 body {
   color: var(--content-default);
 }
 
-/* Capacitor iOS shell: the app shell shrinks ahead of the keyboard plugin's
- * deferred web view resize, briefly exposing the canvas, which unpainted falls
- * through (isOpaque = false) to the near-white native SurfaceOverlay backdrop.
- * Gated because Electron's transparent floating windows need an unpainted canvas. */
-:root[data-native-platform="ios"] body {
+/* Capacitor shells briefly expose the document canvas while their web views
+ * resize for the keyboard. Paint it to prevent the native backdrop flashing
+ * through. Electron's transparent floating windows remain unpainted. */
+:root:is([data-native-platform="ios"], [data-native-platform="android"]) body {
   background: var(--surface-base);
 }
 
@@ -686,23 +685,26 @@ body {
   height: 0;
 }
 
-/* Capacitor iOS shell: hide scrollbars entirely. Styling
- * ::-webkit-scrollbar above replaces WKWebView's auto-hiding overlay
- * indicator with an always-visible bar, which reads as broken on iOS.
- * Scrolling and momentum are unaffected. The
- * :root[data-native-platform="ios"] prefix covers the document scrollbar,
- * every inner scroller, and the ::before / ::after pseudo-elements, mirroring
- * the :root * selector list above, and outranks both it and the [data-theme]
- * scrollbar rules on specificity. */
-:root[data-native-platform="ios"],
-:root[data-native-platform="ios"] *,
-:root[data-native-platform="ios"] *::before,
-:root[data-native-platform="ios"] *::after {
+/* Capacitor mobile shells hide scrollbars entirely. The global scrollbar
+ * styling above replaces native auto-hiding overlay indicators with visible
+ * browser chrome. Scrolling and momentum are unaffected. The native-platform
+ * prefix covers the document scrollbar, every inner scroller, and pseudo
+ * elements while outranking the global and theme scrollbar rules. */
+:root:is([data-native-platform="ios"], [data-native-platform="android"]),
+:root:is([data-native-platform="ios"], [data-native-platform="android"]) *,
+:root:is([data-native-platform="ios"], [data-native-platform="android"])
+  *::before,
+:root:is([data-native-platform="ios"], [data-native-platform="android"])
+  *::after {
   scrollbar-width: none;
 }
 
-:root[data-native-platform="ios"]::-webkit-scrollbar,
-:root[data-native-platform="ios"] ::-webkit-scrollbar {
+:root:is(
+    [data-native-platform="ios"],
+    [data-native-platform="android"]
+  )::-webkit-scrollbar,
+:root:is([data-native-platform="ios"], [data-native-platform="android"])
+  ::-webkit-scrollbar {
   display: none;
   width: 0;
   height: 0;
