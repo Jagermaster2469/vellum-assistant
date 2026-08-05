@@ -282,11 +282,20 @@ export function readAllowedGatewayPorts(lockfilePaths: string[]): Set<number> {
         continue;
       }
       const assistant = entry as {
+        cloud?: unknown;
+        project?: unknown;
+        sshUser?: unknown;
         gatewayUrl?: unknown;
         localUrl?: unknown;
         runtimeUrl?: unknown;
         resources?: { gatewayPort?: unknown };
       };
+      // A paired entry's gateway is remote by contract and reached through the
+      // paired proxy; even a (rejected-on-import, but possibly pre-existing)
+      // loopback runtimeUrl must never open the generic loopback proxy.
+      if (resolveCloud(assistant) === "paired") {
+        continue;
+      }
       addPortFromUrl(assistant.gatewayUrl, ports);
       addPortFromUrl(assistant.localUrl, ports);
       // Docker entries record their published gateway as a loopback
@@ -306,41 +315,54 @@ export function readAllowedGatewayPorts(lockfilePaths: string[]): Set<number> {
 }
 
 /**
- * Read the paired-gateway allowlist from the lockfile: assistantId to the
- * recorded remote `runtimeUrl`, for entries whose resolved cloud is "paired"
- * and whose runtimeUrl is usable ({@link isUsableRuntimeUrl}). Tolerant of
- * malformed entries. Path selection matches the unpair write path
- * (`readRawLockfile` in lockfile.ts): the first readable, parseable lockfile
- * is authoritative even when it yields no targets, so a pairing removed by an
- * unpair write can never survive in a stale fallback file's allowlist.
+ * Compute the paired-gateway allowlist from a lockfile's assistant entries:
+ * assistantId to the recorded remote `runtimeUrl`, for entries whose resolved
+ * cloud is "paired" and whose runtimeUrl is usable
+ * ({@link isUsableRuntimeUrl}). Tolerant of malformed entries. Pure, so a host
+ * holding an in-memory lockfile snapshot (e.g. the Electron lockfile watcher)
+ * derives the allowlist without touching disk on the request path.
+ */
+export function pairedGatewayTargetsFromLockfile(lockfile: {
+  assistants: readonly unknown[];
+}): Map<string, string> {
+  const targets = new Map<string, string>();
+  for (const entry of lockfile.assistants) {
+    if (!entry || typeof entry !== "object") {
+      continue;
+    }
+    const assistant = entry as Record<string, unknown>;
+    if (resolveCloud(assistant) !== "paired") {
+      continue;
+    }
+    const { assistantId, runtimeUrl } = assistant;
+    if (typeof assistantId !== "string" || assistantId === "") {
+      continue;
+    }
+    if (typeof runtimeUrl !== "string" || !isUsableRuntimeUrl(runtimeUrl)) {
+      continue;
+    }
+    targets.set(assistantId, runtimeUrl);
+  }
+  return targets;
+}
+
+/**
+ * Read the paired-gateway allowlist from the lockfile on disk
+ * ({@link pairedGatewayTargetsFromLockfile} over the first readable
+ * candidate). Path selection matches the unpair write path (`readRawLockfile`
+ * in lockfile.ts): the first readable, parseable lockfile is authoritative
+ * even when it yields no targets, so a pairing removed by an unpair write can
+ * never survive in a stale fallback file's allowlist.
  */
 export function readPairedGatewayTargets(
   lockfilePaths: string[],
 ): Map<string, string> {
-  const targets = new Map<string, string>();
   for (const candidate of lockfilePaths) {
     const read = readLockfileAssistantEntries(candidate);
     if (read.kind !== "ok") {
       continue;
     }
-    for (const entry of read.assistants) {
-      if (!entry || typeof entry !== "object") {
-        continue;
-      }
-      const assistant = entry as Record<string, unknown>;
-      if (resolveCloud(assistant) !== "paired") {
-        continue;
-      }
-      const { assistantId, runtimeUrl } = assistant;
-      if (typeof assistantId !== "string" || assistantId === "") {
-        continue;
-      }
-      if (typeof runtimeUrl !== "string" || !isUsableRuntimeUrl(runtimeUrl)) {
-        continue;
-      }
-      targets.set(assistantId, runtimeUrl);
-    }
-    return targets;
+    return pairedGatewayTargetsFromLockfile({ assistants: read.assistants });
   }
-  return targets;
+  return new Map<string, string>();
 }

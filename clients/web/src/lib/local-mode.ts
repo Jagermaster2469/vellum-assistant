@@ -21,6 +21,7 @@ import { getPlatformRuntimeUrl } from "@/lib/platform-runtime-url";
 import { setSelfHostedConnection } from "@/lib/self-hosted/connection";
 import { useLockfileStore } from "@/stores/lockfile-store";
 import {
+  connectImportHost,
   fetchGuardianTokenHost,
   GuardianTokenError,
   loadLockfileHost,
@@ -35,6 +36,7 @@ import type {
   Lockfile,
   LockfileAssistant,
   LocalAssistantResources,
+  LocalConnectImportResult,
   LocalRetireResult,
 } from "@/runtime/local-mode-host";
 
@@ -419,6 +421,37 @@ export async function removePairedAssistantFromLockfile(
   }
   commitLockfile(result.lockfile);
   return { ok: true };
+}
+
+/**
+ * Register a pairing bundle printed by `vellum pair` on another machine: the
+ * host persists its guardian token and creates a `cloud: "paired"` lockfile
+ * entry, then the lockfile is reloaded so subscribers (the resolved-assistants
+ * store) pick up the new entry, the write counterpart of
+ * {@link removePairedAssistantFromLockfile}. `accessOnly` is true when the
+ * bundle carried no refresh credential, so the pairing's access expires and
+ * cannot renew itself.
+ */
+export async function importPairedAssistantBundle(
+  bundle: string,
+  name?: string,
+): Promise<LocalConnectImportResult> {
+  const fallbackError = "Failed to import the pairing bundle.";
+  const result = await connectImportHost(bundle, name);
+  if (!result.ok) {
+    return { ok: false, error: result.error || fallbackError };
+  }
+  // Runtime guard: the dev-server host branch parses untyped JSON, so a
+  // malformed success degrades to a structured failure.
+  if (!result.assistantId) {
+    return { ok: false, error: fallbackError };
+  }
+  await loadLockfile();
+  return {
+    ok: true,
+    assistantId: result.assistantId,
+    accessOnly: result.accessOnly === true,
+  };
 }
 
 // ---------------------------------------------------------------------------

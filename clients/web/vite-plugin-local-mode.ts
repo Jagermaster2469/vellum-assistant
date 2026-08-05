@@ -10,11 +10,13 @@ import {
   isLoopbackAddr,
   headerHostIsLoopback,
   originIsAllowed,
+  connectImport,
   getLockfileData,
   getLocalAssistantStatus,
   upsertLockfileAssistant,
   replacePlatformAssistants,
   isActiveAssistant,
+  isPairedLockfileEntry,
   runHatch,
   runRetire,
   runSleep,
@@ -92,6 +94,9 @@ export function localModePlugin(env: Record<string, string>): Plugin {
       server.middlewares.use(
         unpairMiddleware(config.lockfilePaths, config.configDir),
       );
+      server.middlewares.use(
+        connectImportMiddleware(config.lockfilePaths, config.configDir),
+      );
       server.middlewares.use(sleepMiddleware(baseDir));
       server.middlewares.use(wakeMiddleware(baseDir));
       const upgradingLocalAssistantIds = new Set<string>();
@@ -106,7 +111,12 @@ export function localModePlugin(env: Record<string, string>): Plugin {
         statusMiddleware(config.lockfilePaths, upgradingLocalAssistantIds),
       );
       server.middlewares.use(
-        guardianTokenMiddleware(config.configDir, baseDir, env),
+        guardianTokenMiddleware(
+          config.lockfilePaths,
+          config.configDir,
+          baseDir,
+          env,
+        ),
       );
       server.middlewares.use(gatewayProxyMiddleware(config.lockfilePaths));
       server.middlewares.use(pairedGatewayProxyMiddleware(config.lockfilePaths));
@@ -535,6 +545,53 @@ function unpairMiddleware(
   };
 }
 
+function connectImportMiddleware(
+  lockfilePaths: string[],
+  configDir: string,
+): Connect.NextHandleFunction {
+  return (req, res, next) => {
+    if (
+      req.url !== "/assistant/__local/connect-import" &&
+      req.url !== "/__local/connect-import"
+    ) {
+      return next();
+    }
+
+    if (rejectUnlessLocalEndpointRequest(req, res)) {
+      return;
+    }
+
+    if (req.method !== "POST") {
+      res.statusCode = 405;
+      res.end();
+      return;
+    }
+
+    void readJsonBody(req).then((body) => {
+      if (!body) {
+        respondJson(res, 400, { ok: false, error: "Invalid JSON body" });
+        return;
+      }
+
+      const result = connectImport(lockfilePaths, configDir, {
+        bundle: body.bundle,
+        name: body.name,
+      });
+      respondJson(
+        res,
+        result.ok ? 200 : result.status,
+        result.ok
+          ? {
+              ok: true,
+              assistantId: result.assistantId,
+              accessOnly: result.accessOnly,
+            }
+          : { ok: false, error: result.error },
+      );
+    });
+  };
+}
+
 function sleepMiddleware(baseDir: string): Connect.NextHandleFunction {
   return (req, res, next) => {
     if (
@@ -791,6 +848,7 @@ function statusMiddleware(
 }
 
 function guardianTokenMiddleware(
+  lockfilePaths: string[],
   configDir: string,
   baseDir: string,
   env: Record<string, string>,
@@ -827,7 +885,9 @@ function guardianTokenMiddleware(
       return;
     }
 
-    getGuardianAccessToken(assistantId, configDir, invocation, true, env).then(
+    getGuardianAccessToken(assistantId, configDir, invocation, true, env, {
+      paired: isPairedLockfileEntry(lockfilePaths, assistantId),
+    }).then(
       (result) => {
         if (result.ok) {
           res.setHeader("Content-Type", "application/json");

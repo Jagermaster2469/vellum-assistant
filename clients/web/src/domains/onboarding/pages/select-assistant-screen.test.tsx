@@ -9,7 +9,14 @@
  * run this file solo (`mock.module` leaks across a shared `bun test` run).
  */
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import type { ReactNode } from "react";
 
@@ -63,6 +70,9 @@ mock.module("react-router", () => ({
 
 mock.module("@/assistant/selection", () => ({
   resolveSelectedAssistantId: () => null,
+  // Imported by switch-service (pulled in for the paired-removal branch);
+  // never reached by these tests.
+  setSelectedAssistant: async () => {},
 }));
 
 mock.module("@/assistant/retire-service", () => ({
@@ -76,8 +86,14 @@ mock.module("@/lib/auth/gateway-session", () => ({
 
 class MockUnresolvedLocalGatewayError extends Error {}
 
+// Includes the surface `@/assistant/switch-service` (the real module, which
+// the chooser's paired-removal branch calls into) pulls from local-mode.
 mock.module("@/lib/local-mode", () => ({
+  getLockfileAssistant: () => undefined,
+  getSelectedAssistant: () => undefined,
   isCliWakeableAssistant: () => false,
+  isPairedAssistant: (a: { cloud?: string }) => a?.cloud === "paired",
+  loadLockfile: async () => ({ assistants: [], activeAssistant: null }),
   removePairedAssistantFromLockfile: removePairedAssistantFromLockfileMock,
   removePlatformAssistantFromLockfile: removePlatformAssistantFromLockfileMock,
   UnresolvedLocalGatewayError: MockUnresolvedLocalGatewayError,
@@ -85,6 +101,36 @@ mock.module("@/lib/local-mode", () => ({
 
 mock.module("@/domains/onboarding/components/connect-recovery-dialog", () => ({
   ConnectRecoveryDialog: () => null,
+}));
+
+// A stub that surfaces the open state and deep-link payload, and lets tests
+// drive close and the imported callback the way real dialog interactions
+// would.
+mock.module("@/domains/onboarding/components/connect-assistant-dialog", () => ({
+  ConnectAssistantDialog: ({
+    open,
+    initialBundle,
+    guidanceMessage,
+    onClose,
+    onImported,
+  }: {
+    open: boolean;
+    initialBundle?: string;
+    guidanceMessage?: string;
+    onClose: () => void;
+    onImported: (assistantId: string) => void;
+  }) =>
+    open ? (
+      <div>
+        Connect dialog open
+        {initialBundle && <div>{`bundle:${initialBundle}`}</div>}
+        {guidanceMessage && <div>{guidanceMessage}</div>}
+        <button onClick={onClose}>Close dialog</button>
+        <button onClick={() => onImported("paired-new")}>
+          Simulate import
+        </button>
+      </div>
+    ) : null,
 }));
 
 mock.module("@/domains/onboarding/components/onboarding-layout", () => ({
@@ -108,8 +154,9 @@ mock.module("@/hooks/use-onboarding-login", () => ({
   }),
 }));
 
+let isElectronValue = false;
 mock.module("@/runtime/is-electron", () => ({
-  isElectron: () => false,
+  isElectron: () => isElectronValue,
 }));
 
 mock.module("@/runtime/local-mode-host", () => ({
@@ -142,6 +189,7 @@ mock.module("@/stores/resolved-assistants-store", () => ({
   useResolvedAssistantsStore: {
     use: { assistants: () => assistantsValue },
     getState: () => ({
+      assistants: assistantsValue,
       activeAssistantId: activeAssistantIdValue,
       setActiveAssistantId: setActiveAssistantIdMock,
     }),
@@ -151,6 +199,7 @@ mock.module("@/stores/resolved-assistants-store", () => ({
 mock.module("@/utils/routes", () => ({
   routes: {
     assistant: "/assistant",
+    selectAssistant: "/select-assistant",
     welcome: "/welcome",
     onboarding: { hosting: "/onboarding/hosting" },
   },
@@ -207,6 +256,12 @@ mock.module("@vellumai/design-library/components/menu", () => ({
   },
 }));
 
+// The real (unmocked) store: the screen reads its dialog state from it so a
+// deep link parked by the global consumer opens the dialog on mount.
+const { __resetConnectDialogForTesting, useConnectDialogStore } = await import(
+  "@/stores/connect-dialog-store"
+);
+
 const { SelectAssistantScreen } = await import(
   "@/domains/onboarding/pages/select-assistant-screen"
 );
@@ -260,6 +315,7 @@ describe("SelectAssistantScreen paired assistants", () => {
     hasPlatformSessionValue = false;
     assistantsValue = [];
     localModeHostAvailableValue = false;
+    isElectronValue = false;
     removePairedAssistantFromLockfileMock.mockClear();
     removePairedAssistantFromLockfileMock.mockImplementation(async () => ({
       ok: true,
@@ -267,6 +323,7 @@ describe("SelectAssistantScreen paired assistants", () => {
     removePlatformAssistantFromLockfileMock.mockClear();
     activeAssistantIdValue = null;
     setActiveAssistantIdMock.mockClear();
+    __resetConnectDialogForTesting();
   });
 
   afterEach(cleanup);
@@ -510,6 +567,187 @@ describe("SelectAssistantScreen paired assistants", () => {
       radios.find((r) => r.textContent?.includes("Second Mac"))
         ?.getAttribute("aria-checked"),
     ).toBe("false");
+  });
+
+  test("the connect-a-remote-assistant affordance is hidden without a local-mode host", () => {
+    assistantsValue = [makePairedAssistant(), makePlatformAssistant()];
+
+    render(<SelectAssistantScreen />);
+
+    expect(screen.queryByText("Connect a remote assistant")).toBeNull();
+  });
+
+  test("the connect-a-remote-assistant affordance opens the dialog when a local-mode host is available", () => {
+    localModeHostAvailableValue = true;
+    assistantsValue = [makePairedAssistant(), makePlatformAssistant()];
+
+    render(<SelectAssistantScreen />);
+
+    expect(screen.queryByText("Connect dialog open")).toBeNull();
+
+    fireEvent.click(screen.getByText("Connect a remote assistant"));
+
+    expect(screen.getByText("Connect dialog open")).toBeTruthy();
+  });
+
+  test("a successful import connects the new pairing and navigates", async () => {
+    localModeHostAvailableValue = true;
+    assistantsValue = [makePairedAssistant(), makePlatformAssistant()];
+
+    render(<SelectAssistantScreen />);
+
+    fireEvent.click(screen.getByText("Connect a remote assistant"));
+    fireEvent.click(screen.getByText("Simulate import"));
+
+    await waitFor(() =>
+      expect(connectPairedAssistantMock).toHaveBeenCalledWith("paired-new"),
+    );
+    await waitFor(() =>
+      expect(navigateMock).toHaveBeenCalledWith("/assistant", {
+        replace: true,
+      }),
+    );
+    // The dialog closes as the connect kicks off.
+    expect(screen.queryByText("Connect dialog open")).toBeNull();
+  });
+
+  test("a connect deep link parked in the store opens the dialog on mount with the bundle prefilled", () => {
+    // What `useGlobalDeepLinkConsumer` does for a `<scheme>://connect?bundle=`
+    // link before navigating here.
+    useConnectDialogStore
+      .getState()
+      .openConnectDialog({ initialBundle: "eyJnYXRld2F5" });
+    localModeHostAvailableValue = true;
+    assistantsValue = [makePairedAssistant(), makePlatformAssistant()];
+
+    render(<SelectAssistantScreen />);
+
+    expect(screen.getByText("Connect dialog open")).toBeTruthy();
+    expect(screen.getByText("bundle:eyJnYXRld2F5")).toBeTruthy();
+  });
+
+  test("a bundle-less connect deep link opens the dialog with its guidance copy", () => {
+    useConnectDialogStore.getState().openConnectDialog({
+      guidanceMessage: "Run vellum pair on the assistant's machine.",
+    });
+    localModeHostAvailableValue = true;
+    assistantsValue = [makePairedAssistant(), makePlatformAssistant()];
+
+    render(<SelectAssistantScreen />);
+
+    expect(
+      screen.getByText("Run vellum pair on the assistant's machine."),
+    ).toBeTruthy();
+  });
+
+  test("closing the dialog clears the parked deep-link payload", () => {
+    useConnectDialogStore
+      .getState()
+      .openConnectDialog({ initialBundle: "eyJnYXRld2F5" });
+    localModeHostAvailableValue = true;
+    assistantsValue = [makePairedAssistant(), makePlatformAssistant()];
+
+    render(<SelectAssistantScreen />);
+
+    fireEvent.click(screen.getByText("Close dialog"));
+
+    expect(screen.queryByText("Connect dialog open")).toBeNull();
+    expect(useConnectDialogStore.getState().open).toBe(false);
+    expect(useConnectDialogStore.getState().initialBundle).toBeNull();
+  });
+
+  test("a manual open after a deep-link close starts empty", () => {
+    useConnectDialogStore
+      .getState()
+      .openConnectDialog({ initialBundle: "eyJnYXRld2F5" });
+    localModeHostAvailableValue = true;
+    assistantsValue = [makePairedAssistant(), makePlatformAssistant()];
+
+    render(<SelectAssistantScreen />);
+
+    fireEvent.click(screen.getByText("Close dialog"));
+    fireEvent.click(screen.getByText("Connect a remote assistant"));
+
+    expect(screen.getByText("Connect dialog open")).toBeTruthy();
+    expect(screen.queryByText("bundle:eyJnYXRld2F5")).toBeNull();
+  });
+
+  test("a parked connect deep link suppresses the sole-assistant auto-skip", async () => {
+    useConnectDialogStore
+      .getState()
+      .openConnectDialog({ initialBundle: "eyJnYXRld2F5" });
+    localModeHostAvailableValue = true;
+    assistantsValue = [makePairedAssistant()];
+
+    render(<SelectAssistantScreen />);
+
+    await waitFor(() =>
+      expect(screen.getByText("Connect dialog open")).toBeTruthy(),
+    );
+    expect(connectPairedAssistantMock).not.toHaveBeenCalled();
+    expect(navigateMock).not.toHaveBeenCalled();
+  });
+
+  test("an open connect dialog suppresses the sole-assistant auto-skip", async () => {
+    localModeHostAvailableValue = true;
+    assistantsValue = [];
+
+    const { rerender } = render(<SelectAssistantScreen />);
+
+    fireEvent.click(screen.getByText("Connect a remote assistant"));
+
+    // The import's lockfile reload populates the store while the dialog is
+    // still open (e.g. the access-only warning step is showing).
+    assistantsValue = [makePairedAssistant()];
+    rerender(<SelectAssistantScreen />);
+
+    await waitFor(() =>
+      expect(screen.getByText("Connect dialog open")).toBeTruthy(),
+    );
+    expect(connectPairedAssistantMock).not.toHaveBeenCalled();
+    expect(navigateMock).not.toHaveBeenCalled();
+  });
+
+  test("on Electron the sole-assistant auto-skip waits for the deep-link drain, so a buffered connect link wins", async () => {
+    isElectronValue = true;
+    localModeHostAvailableValue = true;
+    assistantsValue = [makePairedAssistant()];
+
+    render(<SelectAssistantScreen />);
+
+    // Drain not settled yet: the chooser holds instead of auto-connecting.
+    expect(connectPairedAssistantMock).not.toHaveBeenCalled();
+
+    // The buffered connect link publishes (parking the dialog), then the
+    // drain settles.
+    act(() => {
+      useConnectDialogStore
+        .getState()
+        .openConnectDialog({ initialBundle: "eyJnYXRld2F5" });
+      useConnectDialogStore.getState().markDeepLinkDrainSettled();
+    });
+
+    await waitFor(() =>
+      expect(screen.getByText("Connect dialog open")).toBeTruthy(),
+    );
+    expect(connectPairedAssistantMock).not.toHaveBeenCalled();
+    expect(navigateMock).not.toHaveBeenCalled();
+  });
+
+  test("on Electron an empty drain releases the sole-assistant auto-skip", async () => {
+    isElectronValue = true;
+    assistantsValue = [makePairedAssistant()];
+
+    render(<SelectAssistantScreen />);
+    expect(connectPairedAssistantMock).not.toHaveBeenCalled();
+
+    act(() => {
+      useConnectDialogStore.getState().markDeepLinkDrainSettled();
+    });
+
+    await waitFor(() =>
+      expect(connectPairedAssistantMock).toHaveBeenCalledWith(PAIRED_ID),
+    );
   });
 
   test("confirming a locked platform removal still calls removePlatformAssistantFromLockfile", async () => {
