@@ -525,6 +525,27 @@ const pluginSurfacesSchema = z
       .describe(
         "Registered tool names from `tools/<name>.{ts,js}` (filenames derived to tool names, e.g. `create-issue` \u2192 `create_issue`).",
       ),
+    schedules: z
+      .array(
+        z.object({
+          name: z
+            .string()
+            .describe("Schedule name: the declaration directory's name."),
+          cadence: z
+            .string()
+            .describe(
+              "Raw schedule `expression` string from the declaration's config.",
+            ),
+          mode: z
+            .enum(["execute", "script"])
+            .describe(
+              "`execute` for a markdown prompt entrypoint, `script` for `index.sh`.",
+            ),
+        }),
+      )
+      .describe(
+        "Schedules declared under `schedules/`, each a `<name>/` directory with `config.json` plus one entrypoint. Display surface only; files directly under `schedules/` and unsupported declarations are omitted.",
+      ),
   })
   .describe(
     "Surfaces the installed copy contributes, read from its on-disk tree.",
@@ -568,7 +589,7 @@ const pluginInspectResponseSchema = z.object({
   surfaces: pluginSurfacesSchema
     .nullable()
     .describe(
-      "Surfaces the installed copy contributes (skills, hooks, tools); null when the plugin is not installed.",
+      "Surfaces the installed copy contributes (skills, hooks, tools, schedules); null when the plugin is not installed.",
     ),
 });
 
@@ -1206,6 +1227,11 @@ async function handleInstallPlugin({ body = {}, headers }: RouteHandlerArgs) {
   // that introduced it through the plugin's reviewed pin history; an unreviewed
   // SHA is refused. Operators who need an unreviewed revision use the local
   // CLI's `assistant plugins install --pin <sha> --allow-unreviewed`.
+  //
+  // No `confirmStaged` consent gate: the daemon route is unattended by design
+  // (there is no interactive surface to prompt on). Declared schedules the
+  // install arms are surfaced to the user by the schedule reconciler's
+  // `schedule.declared` notification.
   try {
     // Validate the name up front — before any catalog/pin/network work — so a
     // malformed name (`../escape`) is a deterministic 400 rather than a 404/503
@@ -1429,6 +1455,10 @@ async function handleUpgradePlugin({
   let deactivated = false;
   try {
     const name = sanitizePluginName(rawName);
+    // No `confirmStaged` consent gate here: the daemon route is unattended by
+    // design (there is no interactive surface to prompt on). A schedule the
+    // upgraded revision adds is surfaced to the user by the schedule
+    // reconciler's `schedule.declared` notification when it arms.
     const result = await upgradePlugin(
       { name, dryRun, strategy },
       {
@@ -1544,6 +1574,29 @@ function mapTogglePluginError(err: unknown): RouteError {
 }
 
 /**
+ * Converge plugin-declared schedules against the sentinel this route just
+ * wrote, so a toggled plugin's rows disarm or re-arm now rather than at the
+ * reconciler's next backstop sweep.
+ *
+ * Fire-and-forget: the toggle itself already succeeded on disk, so a reconcile
+ * failure must not turn it into a route error. Imported lazily, matching the
+ * plugin source reconcile's own hook, to keep the schedule and notification
+ * modules out of this route module's static graph. The scheduler applies the
+ * sentinel at fire time as well, so a slow or failed pass here delays the row
+ * bookkeeping without letting a disabled plugin run.
+ */
+function reconcilePluginSchedulesInBackground(): void {
+  void import("../../schedule/plugin-schedule-reconciler.js")
+    .then(({ reconcilePluginSchedules }) => reconcilePluginSchedules())
+    .catch((err: unknown) => {
+      log.error(
+        { err },
+        "plugin schedule reconcile after a plugin toggle failed",
+      );
+    });
+}
+
+/**
  * Toggle a plugin's `.disabled` sentinel through the shared toggle-plugin lib,
  * then publish a generic `sync_changed(plugins:list)` so every client refetches
  * `GET /v1/plugins`. Enable and disable emit the SAME invalidation — the tag
@@ -1554,6 +1607,7 @@ function handleEnablePlugin({ pathParams = {}, headers }: RouteHandlerArgs) {
   try {
     enablePlugin(pathParams.name ?? "");
     publishPluginsChanged(getOriginClientId(headers));
+    reconcilePluginSchedulesInBackground();
     return { ok: true };
   } catch (err) {
     throw mapTogglePluginError(err);
@@ -1564,6 +1618,7 @@ function handleDisablePlugin({ pathParams = {}, headers }: RouteHandlerArgs) {
   try {
     disablePlugin(pathParams.name ?? "");
     publishPluginsChanged(getOriginClientId(headers));
+    reconcilePluginSchedulesInBackground();
     return { ok: true };
   } catch (err) {
     throw mapTogglePluginError(err);

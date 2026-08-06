@@ -24245,14 +24245,43 @@ paths:
                             description:
                               Registered tool names from `tools/<name>.{ts,js}` (filenames derived to tool names, e.g. `create-issue` →
                               `create_issue`).
+                          schedules:
+                            type: array
+                            items:
+                              type: object
+                              properties:
+                                name:
+                                  type: string
+                                  description: "Schedule name: the declaration directory's name."
+                                cadence:
+                                  type: string
+                                  description: Raw schedule `expression` string from the declaration's config.
+                                mode:
+                                  type: string
+                                  enum:
+                                    - execute
+                                    - script
+                                  description: "`execute` for a markdown prompt entrypoint, `script` for `index.sh`."
+                              required:
+                                - name
+                                - cadence
+                                - mode
+                              additionalProperties: false
+                            description:
+                              Schedules declared under `schedules/`, each a `<name>/` directory with `config.json` plus one entrypoint.
+                              Display surface only; files directly under `schedules/` and unsupported declarations are
+                              omitted.
                         required:
                           - skills
                           - hooks
                           - tools
+                          - schedules
                         additionalProperties: false
                         description: Surfaces the installed copy contributes, read from its on-disk tree.
                       - type: "null"
-                    description: Surfaces the installed copy contributes (skills, hooks, tools); null when the plugin is not installed.
+                    description:
+                      Surfaces the installed copy contributes (skills, hooks, tools, schedules); null when the plugin is not
+                      installed.
                 required:
                   - name
                   - installed
@@ -25598,6 +25627,20 @@ paths:
                           anyOf:
                             - type: string
                             - type: "null"
+                        sourceKey:
+                          anyOf:
+                            - type: string
+                            - type: "null"
+                          description:
+                            Plugin declaration this schedule mirrors (plugin:<pluginName>/<scheduleName>); null for user-created
+                            schedules
+                        userEnabled:
+                          anyOf:
+                            - type: boolean
+                            - type: "null"
+                          description:
+                            User enable/disable override on a plugin-sourced schedule; null when the declaration's own enabled value
+                            applies. Always null for user-created schedules.
                         isOneShot:
                           type: boolean
                         isDeferred:
@@ -25632,6 +25675,8 @@ paths:
                         - reuseConversation
                         - wakeConversationId
                         - workflowName
+                        - sourceKey
+                        - userEnabled
                         - isOneShot
                         - isDeferred
                       additionalProperties: false
@@ -25815,6 +25860,20 @@ paths:
                         anyOf:
                           - type: string
                           - type: "null"
+                      sourceKey:
+                        anyOf:
+                          - type: string
+                          - type: "null"
+                        description:
+                          Plugin declaration this schedule mirrors (plugin:<pluginName>/<scheduleName>); null for user-created
+                          schedules
+                      userEnabled:
+                        anyOf:
+                          - type: boolean
+                          - type: "null"
+                        description:
+                          User enable/disable override on a plugin-sourced schedule; null when the declaration's own enabled value
+                          applies. Always null for user-created schedules.
                       isOneShot:
                         type: boolean
                       isDeferred:
@@ -25849,6 +25908,8 @@ paths:
                       - reuseConversation
                       - wakeConversationId
                       - workflowName
+                      - sourceKey
+                      - userEnabled
                       - isOneShot
                       - isDeferred
                     additionalProperties: false
@@ -25984,6 +26045,20 @@ paths:
                           anyOf:
                             - type: string
                             - type: "null"
+                        sourceKey:
+                          anyOf:
+                            - type: string
+                            - type: "null"
+                          description:
+                            Plugin declaration this schedule mirrors (plugin:<pluginName>/<scheduleName>); null for user-created
+                            schedules
+                        userEnabled:
+                          anyOf:
+                            - type: boolean
+                            - type: "null"
+                          description:
+                            User enable/disable override on a plugin-sourced schedule; null when the declaration's own enabled value
+                            applies. Always null for user-created schedules.
                         isOneShot:
                           type: boolean
                         isDeferred:
@@ -26018,6 +26093,8 @@ paths:
                         - reuseConversation
                         - wakeConversationId
                         - workflowName
+                        - sourceKey
+                        - userEnabled
                         - isOneShot
                         - isDeferred
                       additionalProperties: false
@@ -26150,6 +26227,20 @@ paths:
                         anyOf:
                           - type: string
                           - type: "null"
+                      sourceKey:
+                        anyOf:
+                          - type: string
+                          - type: "null"
+                        description:
+                          Plugin declaration this schedule mirrors (plugin:<pluginName>/<scheduleName>); null for user-created
+                          schedules
+                      userEnabled:
+                        anyOf:
+                          - type: boolean
+                          - type: "null"
+                        description:
+                          User enable/disable override on a plugin-sourced schedule; null when the declaration's own enabled value
+                          applies. Always null for user-created schedules.
                       isOneShot:
                         type: boolean
                       isDeferred:
@@ -26184,6 +26275,8 @@ paths:
                       - reuseConversation
                       - wakeConversationId
                       - workflowName
+                      - sourceKey
+                      - userEnabled
                       - isOneShot
                       - isDeferred
                     additionalProperties: false
@@ -26376,6 +26469,20 @@ paths:
                           anyOf:
                             - type: string
                             - type: "null"
+                        sourceKey:
+                          anyOf:
+                            - type: string
+                            - type: "null"
+                          description:
+                            Plugin declaration this schedule mirrors (plugin:<pluginName>/<scheduleName>); null for user-created
+                            schedules
+                        userEnabled:
+                          anyOf:
+                            - type: boolean
+                            - type: "null"
+                          description:
+                            User enable/disable override on a plugin-sourced schedule; null when the declaration's own enabled value
+                            applies. Always null for user-created schedules.
                         isOneShot:
                           type: boolean
                         isDeferred:
@@ -26410,6 +26517,8 @@ paths:
                         - reuseConversation
                         - wakeConversationId
                         - workflowName
+                        - sourceKey
+                        - userEnabled
                         - isOneShot
                         - isDeferred
                       additionalProperties: false
@@ -26545,6 +26654,20 @@ paths:
                           anyOf:
                             - type: string
                             - type: "null"
+                        sourceKey:
+                          anyOf:
+                            - type: string
+                            - type: "null"
+                          description:
+                            Plugin declaration this schedule mirrors (plugin:<pluginName>/<scheduleName>); null for user-created
+                            schedules
+                        userEnabled:
+                          anyOf:
+                            - type: boolean
+                            - type: "null"
+                          description:
+                            User enable/disable override on a plugin-sourced schedule; null when the declaration's own enabled value
+                            applies. Always null for user-created schedules.
                         isOneShot:
                           type: boolean
                         isDeferred:
@@ -26579,6 +26702,8 @@ paths:
                         - reuseConversation
                         - wakeConversationId
                         - workflowName
+                        - sourceKey
+                        - userEnabled
                         - isOneShot
                         - isDeferred
                       additionalProperties: false
@@ -26590,7 +26715,9 @@ paths:
     post:
       operationId: schedules_by_id_run_post
       summary: Run schedule now
-      description: Trigger an immediate execution of a schedule.
+      description:
+        Trigger an immediate execution of a schedule. A plugin-sourced schedule is rejected with a 400 when its
+        plugin is disabled or no longer declares it.
       tags:
         - schedules
       parameters:
@@ -26714,6 +26841,20 @@ paths:
                           anyOf:
                             - type: string
                             - type: "null"
+                        sourceKey:
+                          anyOf:
+                            - type: string
+                            - type: "null"
+                          description:
+                            Plugin declaration this schedule mirrors (plugin:<pluginName>/<scheduleName>); null for user-created
+                            schedules
+                        userEnabled:
+                          anyOf:
+                            - type: boolean
+                            - type: "null"
+                          description:
+                            User enable/disable override on a plugin-sourced schedule; null when the declaration's own enabled value
+                            applies. Always null for user-created schedules.
                         isOneShot:
                           type: boolean
                         isDeferred:
@@ -26748,6 +26889,8 @@ paths:
                         - reuseConversation
                         - wakeConversationId
                         - workflowName
+                        - sourceKey
+                        - userEnabled
                         - isOneShot
                         - isDeferred
                       additionalProperties: false
@@ -26884,7 +27027,7 @@ paths:
     post:
       operationId: schedules_by_id_toggle_post
       summary: Toggle schedule
-      description: Enable or disable a schedule.
+      description: Enable or disable a schedule. On a plugin-managed schedule this records the user's override (userEnabled).
       tags:
         - schedules
       parameters:
@@ -27020,6 +27163,20 @@ paths:
                           anyOf:
                             - type: string
                             - type: "null"
+                        sourceKey:
+                          anyOf:
+                            - type: string
+                            - type: "null"
+                          description:
+                            Plugin declaration this schedule mirrors (plugin:<pluginName>/<scheduleName>); null for user-created
+                            schedules
+                        userEnabled:
+                          anyOf:
+                            - type: boolean
+                            - type: "null"
+                          description:
+                            User enable/disable override on a plugin-sourced schedule; null when the declaration's own enabled value
+                            applies. Always null for user-created schedules.
                         isOneShot:
                           type: boolean
                         isDeferred:
@@ -27054,6 +27211,8 @@ paths:
                         - reuseConversation
                         - wakeConversationId
                         - workflowName
+                        - sourceKey
+                        - userEnabled
                         - isOneShot
                         - isDeferred
                       additionalProperties: false
