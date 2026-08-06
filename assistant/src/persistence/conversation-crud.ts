@@ -74,6 +74,7 @@ import { deleteConversationRowsInBatches } from "./conversation-row-batch-delete
 import {
   BACKGROUND_CONVERSATION_TYPES,
   type ConversationCreateType,
+  type ConversationOrigin,
   isHiddenMessageMetadata,
   PINNED_GROUP_ID,
   UNGROUPED_GROUP_ID,
@@ -968,6 +969,17 @@ export function createConversation(
         source?: string;
         scheduleJobId?: string;
         groupId?: string;
+        /**
+         * Where this conversation came from. Stamped into
+         * `origin_channel` at insert, so the row is attributed from the
+         * moment it exists.
+         *
+         * Pass it whenever the origin is known. Omitting it leaves the
+         * column unset, and the conversation is instead attributed by
+         * `setConversationOriginChannelIfUnset` when its first inbound
+         * message arrives.
+         */
+        origin?: ConversationOrigin;
         forkParentConversationId?: string;
         /**
          * Id of the conversation that spawned this one (subagent spawns).
@@ -997,6 +1009,7 @@ export function createConversation(
     requestedConversationType ?? "standard";
   const source = opts.source ?? "user";
   const groupId = opts.groupId;
+  const originChannel = resolveConversationOrigin(opts.origin);
   // Time-ordered UUIDv7 for server-minted conversation ids (see message id).
   const id = opts.id ?? uuidv7();
 
@@ -1023,6 +1036,7 @@ export function createConversation(
     slackContextCompactionWatermarkAt: null as number | null,
     conversationType,
     source,
+    originChannel,
     scheduleJobId: opts.scheduleJobId ?? null,
     forkParentConversationId: opts.forkParentConversationId ?? null,
     parentConversationId: opts.parentConversationId ?? null,
@@ -1062,9 +1076,53 @@ export function createConversation(
     throw err;
   }
 
-  initConversationDir({ ...conversation, originChannel: null });
+  // The disk view records the same origin the row holds.
+  initConversationDir(conversation);
 
   return conversation;
+}
+
+/**
+ * Resolve a caller's {@link ConversationOrigin} to the string stored in
+ * `origin_channel`.
+ *
+ * `inheritFrom` reads the parent's value, which is how a fork, a subagent
+ * spawn, or a scheduled wake lands on the surface its parent belongs to.
+ *
+ * A parent whose own origin is unset yields an unset origin: the child
+ * inherits the parent's state faithfully, including "not yet attributed".
+ * Most rows are in exactly that state until they are claimed by a message or
+ * swept at startup, so treating it as an error would fail the majority of
+ * forks and subagent spawns.
+ *
+ * A parent that does not exist throws. That is not the same condition: it
+ * means a caller named a conversation that is not there, and guessing an
+ * origin for it would be a trust grant rather than a cosmetic default.
+ * `recoverRestingTrustContext` reads this column, and the native channel
+ * recovers `INTERNAL_GUARDIAN_TRUST_CONTEXT` on every later wake and
+ * boot-resume, so a fork of a remote conversation that silently defaulted
+ * would come back as the guardian's own. Parent ids here come from daemon
+ * internals rather than user input, so a missing one is a programming error.
+ *
+ * `undefined` maps to NULL, leaving the row for first-message attribution.
+ */
+function resolveConversationOrigin(
+  origin: ConversationOrigin | undefined,
+): string | null {
+  if (origin === undefined) {
+    return null;
+  }
+  if (typeof origin === "string") {
+    return origin;
+  }
+  const parent = getConversation(origin.inheritFrom);
+  if (!parent) {
+    throw new Error(
+      `Cannot inherit conversation origin from ${origin.inheritFrom}: ` +
+        "no such conversation",
+    );
+  }
+  return parent.originChannel;
 }
 
 /**
@@ -1096,7 +1154,10 @@ export const ADOPTABLE_CONVERSATION_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
  * is validated first — a value like `../../tmp/x` would otherwise write
  * `meta.json` outside the conversations directory.
  */
-export function ensureConversationExists(id: string): boolean {
+export function ensureConversationExists(
+  id: string,
+  origin: ConversationOrigin | undefined,
+): boolean {
   if (getConversation(id)) {
     return false;
   }
@@ -1106,7 +1167,7 @@ export function ensureConversationExists(id: string): boolean {
     );
   }
   try {
-    createConversation({ id });
+    createConversation({ id, origin });
     return true;
   } catch (err) {
     // A concurrent caller may have created the row between the check and the
