@@ -25473,6 +25473,12 @@ paths:
           schema:
             type: string
           description: When 'true', include deferred schedules that are normally hidden.
+        - name: inference_profile
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Return only schedules pinned to this inference profile (llm.profiles key).
       responses:
         "200":
           description: Successful response
@@ -25590,6 +25596,8 @@ paths:
                             - type: "null"
                         isOneShot:
                           type: boolean
+                        isDeferred:
+                          type: boolean
                       required:
                         - id
                         - name
@@ -25621,6 +25629,7 @@ paths:
                         - wakeConversationId
                         - workflowName
                         - isOneShot
+                        - isDeferred
                       additionalProperties: false
                     description: Schedule objects
                 required:
@@ -25804,6 +25813,8 @@ paths:
                           - type: "null"
                       isOneShot:
                         type: boolean
+                      isDeferred:
+                        type: boolean
                     required:
                       - id
                       - name
@@ -25835,6 +25846,7 @@ paths:
                       - wakeConversationId
                       - workflowName
                       - isOneShot
+                      - isDeferred
                     additionalProperties: false
                     description: The created schedule
                 required:
@@ -25970,6 +25982,8 @@ paths:
                             - type: "null"
                         isOneShot:
                           type: boolean
+                        isDeferred:
+                          type: boolean
                       required:
                         - id
                         - name
@@ -26001,6 +26015,7 @@ paths:
                         - wakeConversationId
                         - workflowName
                         - isOneShot
+                        - isDeferred
                       additionalProperties: false
                     description: Updated schedule list
                 required:
@@ -26133,6 +26148,8 @@ paths:
                           - type: "null"
                       isOneShot:
                         type: boolean
+                      isDeferred:
+                        type: boolean
                     required:
                       - id
                       - name
@@ -26164,6 +26181,7 @@ paths:
                       - wakeConversationId
                       - workflowName
                       - isOneShot
+                      - isDeferred
                     additionalProperties: false
                     description: Schedule object
                 required:
@@ -26356,6 +26374,8 @@ paths:
                             - type: "null"
                         isOneShot:
                           type: boolean
+                        isDeferred:
+                          type: boolean
                       required:
                         - id
                         - name
@@ -26387,6 +26407,7 @@ paths:
                         - wakeConversationId
                         - workflowName
                         - isOneShot
+                        - isDeferred
                       additionalProperties: false
                     description: Updated schedule list
                 required:
@@ -26522,6 +26543,8 @@ paths:
                             - type: "null"
                         isOneShot:
                           type: boolean
+                        isDeferred:
+                          type: boolean
                       required:
                         - id
                         - name
@@ -26553,6 +26576,7 @@ paths:
                         - wakeConversationId
                         - workflowName
                         - isOneShot
+                        - isDeferred
                       additionalProperties: false
                     description: Updated schedule list
                 required:
@@ -26688,6 +26712,8 @@ paths:
                             - type: "null"
                         isOneShot:
                           type: boolean
+                        isDeferred:
+                          type: boolean
                       required:
                         - id
                         - name
@@ -26719,6 +26745,7 @@ paths:
                         - wakeConversationId
                         - workflowName
                         - isOneShot
+                        - isDeferred
                       additionalProperties: false
                     description: Updated schedule list
                 required:
@@ -26991,6 +27018,8 @@ paths:
                             - type: "null"
                         isOneShot:
                           type: boolean
+                        isDeferred:
+                          type: boolean
                       required:
                         - id
                         - name
@@ -27022,10 +27051,51 @@ paths:
                         - wakeConversationId
                         - workflowName
                         - isOneShot
+                        - isDeferred
                       additionalProperties: false
                     description: Updated schedule list
                 required:
                   - schedules
+                additionalProperties: false
+  /v1/schedules/reassign-profile:
+    post:
+      operationId: schedules_reassignprofile_post
+      summary: Reassign schedules to another inference profile
+      description:
+        Move schedules onto one inference profile. Pass 'from' to move only the schedules pinned to that profile,
+        so deleting a profile does not leave its schedules pointing at a name that no longer exists. Omit 'from' to move
+        every schedule, which re-pins the whole set onto one profile. Schedules already pinned to the target are
+        skipped.
+      tags:
+        - schedules
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                from:
+                  description: Inference profile key the schedules are pinned to now; omit to select every schedule
+                  type: string
+                to:
+                  type: string
+                  description: Inference profile key to move them to; must be configured
+              required:
+                - to
+      responses:
+        "200":
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reassigned:
+                    type: number
+                    description: Number of schedules moved
+                required:
+                  - reassigned
                 additionalProperties: false
   /v1/schedules/usage-summary:
     get:
