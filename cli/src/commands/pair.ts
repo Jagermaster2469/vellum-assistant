@@ -31,6 +31,7 @@ import { extractFlag } from "../lib/arg-utils.js";
 import { parseAssistantTargetArg } from "../lib/assistant-target-args.js";
 import {
   formatAssistantLookupError,
+  formatAssistantReference,
   lookupAssistantByIdentifier,
   resolveAssistant,
   type AssistantEntry,
@@ -40,6 +41,7 @@ import {
   getClientRegistrationHeaders,
 } from "../lib/client-identity.js";
 import { GATEWAY_PORT } from "../lib/constants.js";
+import { getCurrentEnvironment } from "../lib/environments/resolve.js";
 import {
   formatFeatureFlagGateMessage,
   isAssistantFeatureFlagEnabled,
@@ -47,6 +49,7 @@ import {
 } from "../lib/feature-flags.js";
 import { getLocalLanIPv4 } from "../lib/local.js";
 import { isLoopbackUrl, loopbackSafeFetch } from "../lib/loopback-fetch.js";
+import { formatWebApproveFailure, parseGatewayErrorCode } from "../lib/pair.js";
 import { STALE_CLI_UPDATE_HINT } from "../lib/stale-cli-hint.js";
 
 function assistantDisplayName(entry: AssistantEntry): string {
@@ -152,19 +155,18 @@ export function buildAppConnectUrl(
 
 /**
  * POST a JSON body to a loopback gateway route, exiting with a clear message
- * when the gateway is unreachable or answers non-2xx. Every pairing subcommand
- * talks to the gateway this way, so the reachability + HTTP-error handling has
- * a single home.
+ * when the gateway is unreachable. Non-2xx responses are returned to the
+ * caller; use {@link gatewayPostOrExit} unless the call site prints its own
+ * HTTP-error diagnostics.
  */
-async function gatewayPostOrExit(
+async function gatewayPost(
   gatewayUrl: string,
   path: string,
   body: unknown,
   headers?: Record<string, string>,
 ): Promise<Response> {
-  let response: Response;
   try {
-    response = await loopbackSafeFetch(`${gatewayUrl}${path}`, {
+    return await loopbackSafeFetch(`${gatewayUrl}${path}`, {
       method: "POST",
       headers: { "Content-Type": "application/json", ...headers },
       body: JSON.stringify(body),
@@ -177,7 +179,24 @@ async function gatewayPostOrExit(
     console.error("Is the assistant running? Try `vellum wake`.");
     process.exit(1);
   }
+}
 
+/**
+ * {@link gatewayPost}, but also exiting with a generic message on non-2xx.
+ * Every pairing subcommand talks to the gateway this way, so the reachability
+ * + HTTP-error handling has a single home.
+ */
+async function gatewayPostOrExit(
+  gatewayUrl: string,
+  path: string,
+  body: unknown,
+  headers?: Record<string, string>,
+): Promise<Response> {
+  return exitOnHttpError(await gatewayPost(gatewayUrl, path, body, headers));
+}
+
+/** Exit with a generic HTTP-error message on non-2xx; pass 2xx through. */
+async function exitOnHttpError(response: Response): Promise<Response> {
   if (!response.ok) {
     const errorBody = await response.text().catch(() => "");
     console.error(
@@ -185,7 +204,6 @@ async function gatewayPostOrExit(
     );
     process.exit(1);
   }
-
   return response;
 }
 
@@ -206,18 +224,32 @@ async function createRemoteWebPairingChallenge(
 }
 
 /**
- * Approve a pending pairing challenge by its user code — the local-presence
- * proof for the device-code flow. Shared by `--web-approve` and `--qr` (which
- * approves the challenge it just minted so one scan completes pairing).
+ * Approve a pending pairing challenge by its user code, the local-presence
+ * proof for the device-code flow. Single owner of the pairing-verification
+ * route and request body: `--qr` approves via {@link approveRemoteWebPairing}
+ * (generic exit on non-2xx), while `--web-approve` calls this directly to
+ * inspect rejections and print mismatch diagnostics (see
+ * {@link formatWebApproveFailure}).
+ */
+async function postPairingVerification(
+  gatewayUrl: string,
+  userCode: string,
+): Promise<Response> {
+  return gatewayPost(gatewayUrl, "/v1/remote-web/pairing-verification", {
+    userCode,
+  } satisfies RemoteWebPairingVerificationRequest);
+}
+
+/**
+ * Approve the challenge `--qr` just minted so one scan completes pairing,
+ * exiting with a generic message on non-2xx.
  */
 async function approveRemoteWebPairing(
   gatewayUrl: string,
   userCode: string,
 ): Promise<RemoteWebPairingVerificationResponse> {
-  const response = await gatewayPostOrExit(
-    gatewayUrl,
-    "/v1/remote-web/pairing-verification",
-    { userCode } satisfies RemoteWebPairingVerificationRequest,
+  const response = await exitOnHttpError(
+    await postPairingVerification(gatewayUrl, userCode),
   );
   return (await response.json()) as RemoteWebPairingVerificationResponse;
 }
@@ -399,7 +431,26 @@ export async function pair(): Promise<void> {
   if (webApproveCode) {
     await assertWebRemoteIngressEnabled(entry.assistantId, mintUrl);
 
-    const result = await approveRemoteWebPairing(mintUrl, webApproveCode);
+    // Rejections are diagnosed here rather than by exitOnHttpError: a
+    // rejected code must name the gateway that was asked, or an
+    // assistant/environment mismatch is indistinguishable from a typo.
+    const response = await postPairingVerification(mintUrl, webApproveCode);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => "");
+      const diagnostic = formatWebApproveFailure(
+        mintUrl,
+        formatAssistantReference(entry),
+        getCurrentEnvironment().name,
+        parseGatewayErrorCode(errorBody),
+      );
+      console.error(
+        diagnostic ??
+          `Error: HTTP ${response.status}: ${errorBody || response.statusText}`,
+      );
+      process.exit(1);
+    }
+    const result =
+      (await response.json()) as RemoteWebPairingVerificationResponse;
     if (jsonOutput) {
       console.log(JSON.stringify(result, null, 2));
       return;
