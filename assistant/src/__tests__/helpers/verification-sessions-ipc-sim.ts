@@ -22,6 +22,8 @@
 import { randomBytes, randomUUID } from "node:crypto";
 
 import {
+  bindsSameIdentity,
+  boundIdentity,
   hashVerificationSecret,
   VERIFICATION_SESSIONS_IPC_METHODS,
   type VerificationSessionWire,
@@ -65,29 +67,10 @@ function isInterceptable(s: VerificationSessionWire): boolean {
 const OUTBOUND_LIVE_STATUSES = ["pending_bootstrap", "awaiting_response"];
 
 /**
- * The identity a session redeems on, in `checkIdentityMatch`'s precedence
- * order. Null when the session carries none, which is a bootstrap session.
- */
-function boundIdentity(session: {
-  expectedExternalUserId?: string | null;
-  expectedChatId?: string | null;
-  expectedPhoneE164?: string | null;
-}): string | null {
-  if (session.expectedExternalUserId) {
-    return `user:${session.expectedExternalUserId}`;
-  }
-  if (session.expectedPhoneE164) {
-    return `phone:${session.expectedPhoneE164}`;
-  }
-  if (session.expectedChatId) {
-    return `chat:${session.expectedChatId}`;
-  }
-  return null;
-}
-
-/**
  * Mirrors the gateway store: an outbound mint supersedes only sessions bound
  * to the same identity, leaving other actors and inbound challenges alone.
+ * The identity rule itself comes from the shared contract, so this cannot
+ * drift from what the gateway does.
  */
 function revokeSameActorOutbound(
   channel: string,
@@ -102,7 +85,7 @@ function revokeSameActorOutbound(
     if (
       s.channel === channel &&
       OUTBOUND_LIVE_STATUSES.includes(s.status) &&
-      boundIdentity(s) === identity
+      bindsSameIdentity(boundIdentity(s), identity)
     ) {
       s.status = "revoked";
       s.updatedAt = now;
@@ -522,50 +505,24 @@ function recordInvalidAttempt(key: string): void {
   rateLimits.set(key, entry);
 }
 
+/**
+ * Mirrors the gateway consume path. Both sides read the shared
+ * `boundIdentity`, so the sim cannot accept a code the real service would
+ * refuse. A session bound to no identity, or not yet finally bound
+ * (`pending_bootstrap`), bypasses the check as it does at the gateway.
+ */
 function checkIdentityMatch(
   session: VerificationSessionWire,
   actorExternalUserId: string,
   actorChatId: string,
 ): boolean {
-  const hasExpectedIdentity =
-    session.expectedExternalUserId != null ||
-    session.expectedChatId != null ||
-    session.expectedPhoneE164 != null;
-  // pending_bootstrap (and unbound inbound) sessions bypass the check.
-  if (!hasExpectedIdentity || session.identityBindingStatus !== "bound") {
+  const identity = boundIdentity(session);
+  if (identity === null || session.identityBindingStatus !== "bound") {
     return true;
   }
-
-  if (
-    session.expectedPhoneE164 != null &&
-    (actorExternalUserId === session.expectedPhoneE164 ||
-      actorExternalUserId === session.expectedExternalUserId)
-  ) {
-    return true;
-  }
-
-  // Shared-chatId caveat: when both expected fields are set, require the
-  // externalUserId match — chat IDs can be shared.
-  if (session.expectedChatId != null) {
-    if (session.expectedExternalUserId != null) {
-      if (actorExternalUserId === session.expectedExternalUserId) {
-        return true;
-      }
-    } else if (actorChatId === session.expectedChatId) {
-      return true;
-    }
-  }
-
-  if (
-    session.expectedPhoneE164 == null &&
-    session.expectedChatId == null &&
-    session.expectedExternalUserId != null &&
-    actorExternalUserId === session.expectedExternalUserId
-  ) {
-    return true;
-  }
-
-  return false;
+  return identity.field === "chatId"
+    ? actorChatId === identity.value
+    : actorExternalUserId === identity.value;
 }
 
 export function validateAndConsumeVerification(
