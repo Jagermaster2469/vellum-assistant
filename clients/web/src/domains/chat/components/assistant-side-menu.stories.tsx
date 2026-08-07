@@ -9,13 +9,17 @@
  * and the channel-`Grouped` one.
  *
  * The view lives in the sidebar's layout store, keyed per assistant, so each
- * story seeds its own assistant id before mounting.
+ * story seeds its own assistant id before mounting. Pinned apps come from a
+ * store too rather than from a prop, so they are seeded the same way: a story
+ * that does not seed it renders the rail without its pinned-app cluster.
  */
 
 import type { Meta, StoryObj } from "@storybook/react-vite";
 
 import { AssistantSideMenu } from "@/domains/chat/components/assistant-side-menu";
+import { PreferencesMenu } from "@/domains/chat/components/preferences-menu";
 import { useSidebarLayoutStore } from "@/domains/chat/sidebar-layout-store";
+import { usePinnedAppsStore } from "@/stores/pinned-apps-store";
 import {
   saveViewMode,
   type SidebarViewMode,
@@ -87,6 +91,13 @@ const LONG_CONVERSATIONS: Conversation[] = [
   ),
 ];
 
+/* Two, because one pinned app cannot show whether the cluster spaces its
+   entries the way the sections below it do. */
+const PINNED_APPS = [
+  { appId: "app-ops", pinnedOrder: 0, name: "Vex Ops" },
+  { appId: "app-inbox", pinnedOrder: 1, name: "Inbox Triage" },
+];
+
 const GROUPS: ConversationGroup[] = [
   {
     id: "grp-reviews",
@@ -102,6 +113,23 @@ const GROUPS: ConversationGroup[] = [
     sortPosition: 1,
     isSystemGroup: false,
   },
+  /* A custom group the user has not filed anything into yet, given no
+     conversations on purpose: an empty section renders in both states - a
+     muted tile on the rail, a headed card when expanded - and it holds its
+     place either way. In the shared set rather than one story, so the
+     collapsed and expanded stories differ only by `collapsed`.
+
+     Not named "Archive": archived conversations are excluded from the sidebar
+     entirely (`groupConversations` drops anything with `archivedAt`), so a
+     fixture called that reads as a section this component renders and never
+     does. */
+  {
+    id: "grp-reading",
+    name: "Reading List",
+    icon: "bookmark",
+    sortPosition: 2,
+    isSystemGroup: false,
+  },
 ];
 
 /**
@@ -113,6 +141,10 @@ const GROUPS: ConversationGroup[] = [
 function seedViewMode(assistantId: string, mode: SidebarViewMode): void {
   saveViewMode(assistantId, mode);
   useSidebarLayoutStore.setState({ assistantId: null });
+  usePinnedAppsStore.setState({
+    pinnedApps: PINNED_APPS,
+    pinnedAppIds: new Set(PINNED_APPS.map((app) => app.appId)),
+  });
 }
 
 const SHARED_ARGS = {
@@ -123,6 +155,12 @@ const SHARED_ARGS = {
   conversationGroups: GROUPS,
   activeConversationId: "r1",
   onSelectConversation: () => {},
+  /* `PanelItem` only takes on button semantics, hover and a pointer cursor
+     when it is given a handler. Without these two the assistant row and the
+     pinned apps render inert, which reads as a styling bug in the pill and
+     is not one. */
+  onOpenIntelligence: () => {},
+  onOpenApp: () => {},
   onStartNewConversation: () => {},
   onRenameGroup: () => {},
   onDeleteGroup: () => {},
@@ -137,6 +175,10 @@ const SHARED_ARGS = {
   onMarkConversationUnread: () => {},
   onPinConversation: () => {},
   onArchiveConversation: () => {},
+  /* The real `PreferencesMenu`, not a stand-in: it is the sidebar's bottom
+     entry, and without it these stories show every part of the rail except
+     the one at its foot. `chat-layout` passes it the same way. */
+  footerAction: <PreferencesMenu assistantId="asst-story" />,
 } satisfies Partial<Parameters<typeof AssistantSideMenu>[0]>;
 
 const meta: Meta<typeof AssistantSideMenu> = {
@@ -209,16 +251,6 @@ export const CollapsedRail: Story = {
     ...SHARED_ARGS,
     assistantId: "asst-collapsed",
     collapsed: true,
-    conversationGroups: [
-      ...GROUPS,
-      {
-        id: "grp-archive",
-        name: "Archive",
-        icon: "briefcase",
-        sortPosition: 2,
-        isSystemGroup: false,
-      },
-    ],
   },
 };
 

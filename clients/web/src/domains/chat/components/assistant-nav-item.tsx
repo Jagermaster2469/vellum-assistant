@@ -22,12 +22,14 @@
  * as (custom image / not loaded).
  */
 
+import { SIDEBAR_STACK_GAP } from "@/components/sidebar-nav-geometry";
 import { Brain, Plus } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { CSSProperties } from "react";
 import { motion, useAnimationControls, useReducedMotion } from "motion/react";
 
-import { cn } from "@vellumai/design-library";
+import type { CSSProperties, Ref } from "react";
+
+import { cn, PanelItem } from "@vellumai/design-library";
 
 import {
   SIDEBAR_CHIP_GAP,
@@ -46,7 +48,10 @@ const ROW_HEIGHT = 30;
 /** Mobile-overlay row height, matching `SideMenu.Item`'s mobile row. */
 const MOBILE_ROW_HEIGHT = 44;
 /** Collapsed-rail assistant tile height (Figma 7257:135820). */
-const COLLAPSED_ASSISTANT_ROW_HEIGHT = 32;
+/* Matches the circle `SideMenu.Item` and the section triggers render on the
+   rail: every tile there is the same 30px circle, so one step runs the whole
+   column. Diverging from it drifts this cluster against the sections. */
+const COLLAPSED_ASSISTANT_TILE = 30;
 /** Patrol stop on the right side: grown, cut off by the bottom edge. */
 const SIDE_SCALE = 2.1;
 const SIDE_RIGHT_MARGIN = 14;
@@ -89,7 +94,11 @@ export function AssistantNavItem({
   // suppressed and the assistant row drains to a plain nav item.
   const navTourActive = useInChatOnboardingStore.use.navTourActive();
   const eyesControls = useAnimationControls();
-  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  /* Whichever element is currently the assistant row - the collapsed tile or
+   the expanded pill. The patrol measures it to keep the sprite inside, and
+   the pill is `w-fit`, so its width tracks the assistant's name and cannot be
+   assumed. */
+  const rowRef = useRef<HTMLElement | null>(null);
   const [blinking, setBlinking] = useState(false);
 
   const rowHeight = isMobile ? MOBILE_ROW_HEIGHT : ROW_HEIGHT;
@@ -160,7 +169,13 @@ export function AssistantNavItem({
       if (cancelled) {
         return;
       }
-      const width = buttonRef.current?.offsetWidth ?? 200;
+      const width = rowRef.current?.offsetWidth ?? 0;
+      if (width === 0) {
+        /* Nothing measurable to stay inside, so skip the side stop rather
+           than guess a width and send the sprite past the edge. */
+        await move({ y: 0 }, spring(320, 18));
+        return;
+      }
       // x is relative to the sprite's home in the icon slot (row padding
       // plus its centering offset inside the chip-width slot).
       const homeLeft = ROW_PADDING_X + (CHIP_SIZE - eyesWidth) / 2;
@@ -216,64 +231,53 @@ export function AssistantNavItem({
       components.colors.find((c) => c.id === traits.color)?.hex) ||
     null;
 
-  // The row wears the identity page's feature-card wash: 14% of the
-  // avatar color mixed into the lifted surface, the Personality card's
-  // recipe (see `identity-overview.tsx` `--card-feature-bg`) — falling
-  // back to the plain hover treatment when there's no character avatar.
-  // While the tour owns the nav the wash drains away like the assistant
-  // row's color.
-  const newConversationRow = showNewConversation ? (
+  /* An untinted pill. It sat on a 14% wash of the avatar colour, which put
+     two tinted surfaces next to each other with only the identity pill
+     needing to carry the assistant's colour. Plain reads better beside it,
+     and it drops the one place a leading icon and its label wanted different
+     colours.
+
+     Collapsed, it becomes the same square glyph tile the identity above it
+     uses rather than a pill with its label dropped: a pill is sized by its
+     content, so on a 48px rail one keeping its label overflows the rail
+     entirely. */
+  const newConversationRow = !showNewConversation ? null : collapsed ? (
     <button
       type="button"
       onClick={onNewConversation}
       title="New Chat"
       data-tour-id="new-chat"
       className={cn(
-        "group relative flex w-full cursor-pointer items-center overflow-hidden select-none",
-        collapsed ? "rounded-[6px]" : "rounded-[8px]",
+        "group relative flex shrink-0 self-center cursor-pointer items-center justify-center overflow-hidden select-none",
+        "rounded-full",
         "outline-none keyboard-focus:ring-2 keyboard-focus:ring-[var(--ring)]",
         "transition-colors duration-150 active:scale-[0.98]",
-        hex && !navTourActive
-          ? "bg-[color-mix(in_srgb,var(--assistant-tint)_14%,var(--surface-lift))] hover:bg-[color-mix(in_srgb,var(--assistant-tint)_36%,var(--surface-lift))]"
-          : "hover:bg-[var(--surface-hover)]",
-        collapsed && "justify-center",
+        "bg-[var(--panel-item-bg,var(--surface-lift))]",
+        "[@media(hover:hover)]:hover:bg-[var(--panel-item-hover,var(--surface-hover))]",
       )}
-      style={
-        {
-          height: collapsed ? COLLAPSED_ASSISTANT_ROW_HEIGHT : rowHeight,
-          gap: SIDEBAR_CHIP_GAP,
-          paddingLeft: collapsed ? 0 : ROW_PADDING_X,
-          paddingRight: collapsed ? 0 : ROW_PADDING_X,
-          ...(hex ? { "--assistant-tint": hex } : null),
-        } as CSSProperties
-      }
+      style={{
+        width: COLLAPSED_ASSISTANT_TILE,
+        height: COLLAPSED_ASSISTANT_TILE,
+      }}
     >
-      <span
+      {/* 14px, not the section headers' 12px - the plus glyph carries less
+          ink than the pin/chat icons, so it needs the extra 2px to read at
+          the same weight beside them. */}
+      <Plus
         aria-hidden="true"
-        className="flex shrink-0 items-center justify-center"
-        style={{ width: CHIP_SIZE, height: CHIP_SIZE }}
-      >
-        {/* 14px, not the section headers' 12px — the plus glyph carries
-            less ink than the pin/chat icons, so it needs the extra 2px to
-            read as the same size. */}
-        <Plus
-          className="h-3.5 w-3.5"
-          style={{
-            color: "var(--assistant-tint, var(--content-secondary))",
-          }}
-        />
-      </span>
-      {!collapsed && (
-        <span
-          className={`min-w-0 flex-1 truncate text-left text-[color:var(--content-default)] ${
-            isMobile ? "text-body-large-default" : "text-body-medium-lighter"
-          }`}
-        >
-          New Chat
-        </span>
-      )}
+        className="h-3.5 w-3.5"
+        style={{ color: "var(--content-tertiary)" }}
+      />
     </button>
-  ) : null;
+  ) : (
+    <PanelItem
+      shape="pill"
+      icon={Plus}
+      label="New Chat"
+      onSelect={onNewConversation}
+      data-tour-id="new-chat"
+    />
+  );
 
   if (!hex) {
     // No character avatar (custom image / not loaded): a plain-toned row
@@ -281,34 +285,28 @@ export function AssistantNavItem({
     // the same CHIP_SIZE slot the plus chip and the eyes use, so both
     // rows' labels stay on one axis.
     return (
-      <div className="flex flex-col gap-[8px]">
-        <button
-          type="button"
-          onClick={onSelect}
-          title={label}
-          data-tour-id="assistant-page"
-          aria-current={active ? "page" : undefined}
-          className={cn(
-            "group relative flex w-full cursor-pointer items-center overflow-hidden select-none",
-            collapsed ? "rounded-[6px]" : "rounded-[8px]",
-            "outline-none keyboard-focus:ring-2 keyboard-focus:ring-[var(--ring)]",
-            "transition-colors duration-150 active:scale-[0.98]",
-            active
-              ? "bg-[var(--surface-active)]"
-              : "hover:bg-[var(--surface-hover)]",
-            collapsed && "justify-center",
-          )}
-          style={{
-            height: collapsed ? COLLAPSED_ASSISTANT_ROW_HEIGHT : rowHeight,
-            gap: SIDEBAR_CHIP_GAP,
-            paddingLeft: collapsed ? 0 : ROW_PADDING_X,
-            paddingRight: collapsed ? 0 : ROW_PADDING_X,
-          }}
-        >
-          <span
-            aria-hidden="true"
-            className="flex shrink-0 items-center justify-center"
-            style={{ width: CHIP_SIZE, height: CHIP_SIZE }}
+      <div className={cn("flex flex-col", SIDEBAR_STACK_GAP)}>
+        {collapsed ? (
+          <button
+            type="button"
+            onClick={onSelect}
+            title={label}
+            data-tour-id="assistant-page"
+            aria-current={active ? "page" : undefined}
+            className={cn(
+              "group relative flex shrink-0 self-center cursor-pointer items-center justify-center overflow-hidden select-none",
+              "rounded-full",
+              "outline-none keyboard-focus:ring-2 keyboard-focus:ring-[var(--ring)]",
+              "transition-colors duration-150 active:scale-[0.98]",
+              "bg-[var(--panel-item-bg,var(--surface-lift))]",
+              active
+                ? "bg-[var(--surface-active)]"
+                : "[@media(hover:hover)]:hover:bg-[var(--panel-item-hover,var(--surface-hover))]",
+            )}
+            style={{
+              width: COLLAPSED_ASSISTANT_TILE,
+              height: COLLAPSED_ASSISTANT_TILE,
+            }}
           >
             <Brain
               className="h-3.5 w-3.5"
@@ -318,23 +316,20 @@ export function AssistantNavItem({
                   : "var(--content-tertiary)",
               }}
             />
-          </span>
-          {!collapsed && (
-            <span
-              className={cn(
-                "min-w-0 flex-1 truncate text-left",
-                active
-                  ? "text-[color:var(--content-emphasised)]"
-                  : "text-[color:var(--content-secondary)]",
-                isMobile
-                  ? "text-body-large-default"
-                  : "text-body-medium-lighter",
-              )}
-            >
-              {label}
-            </span>
-          )}
-        </button>
+          </button>
+        ) : (
+          /* No character avatar, so nothing declares the tint properties and
+             the pill wears its plain surface. Same component as the tinted
+             one below: the colour is the only difference between them. */
+          <PanelItem
+            shape="pill"
+            icon={Brain}
+            label={label}
+            active={active}
+            onSelect={onSelect}
+            data-tour-id="assistant-page"
+          />
+        )}
         {newConversationRow}
       </div>
     );
@@ -366,106 +361,119 @@ export function AssistantNavItem({
     </svg>
   );
 
-  const assistantRow = (
+  /* The assistant's own colour, declared as the pill's tint properties
+     rather than passed to `PanelItem` or written over its classes. Hover
+     lightens the same hue, which is what the bespoke row did with
+     `brightness-105`. While the tour owns the nav the colour drains away
+     entirely: nothing is declared, so the pill falls back to its plain
+     surface and the tour's flood is the only colour on screen. */
+  const tintStyle =
+    !navTourActive && hex
+      ? ({
+          "--panel-item-bg": hex,
+          "--panel-item-fg": fg,
+          "--panel-item-hover": `color-mix(in srgb, #fff 8%, ${hex})`,
+        } as CSSProperties)
+      : undefined;
+
+  /* The eyes, in the pill's leading slot. Absolutely placed inside a
+     chip-width box, as they were in the row, so a patrol can still carry the
+     sprite across and under the pill rather than being clipped to the glyph. */
+  const eyesSlot = (
+    <span
+      aria-hidden="true"
+      className="pointer-events-none relative flex shrink-0 items-center justify-center"
+      style={{ width: CHIP_SIZE, height: CHIP_SIZE }}
+    >
+      {navTourActive && (
+        <Brain
+          className="h-3.5 w-3.5"
+          style={{
+            color: active
+              ? "var(--content-default)"
+              : "var(--content-tertiary)",
+          }}
+        />
+      )}
+      {!navTourActive && eye && (
+        <motion.span
+          className="absolute"
+          style={{
+            width: eyesWidth,
+            height: eyesHeight,
+            left: (CHIP_SIZE - eyesWidth) / 2,
+            top: (CHIP_SIZE - eyesHeight) / 2,
+            transformOrigin: "50% 100%",
+          }}
+          initial={false}
+          animate={eyesControls}
+        >
+          {eyesSvg}
+        </motion.span>
+      )}
+    </span>
+  );
+
+  const assistantRow = collapsed ? (
+    /* The collapsed rail keeps its own tile: it is a destination reduced to a
+       glyph, not a pill with its label dropped, and it centres the sprite
+       rather than leading with it. */
     <button
-      ref={buttonRef}
+      ref={rowRef as Ref<HTMLButtonElement>}
       type="button"
       onClick={onSelect}
       title={label}
       data-tour-id="assistant-page"
       aria-current={active ? "page" : undefined}
       className={cn(
-        "group relative flex w-full cursor-pointer items-center overflow-hidden select-none",
-        collapsed ? "rounded-[6px]" : "rounded-[8px]",
+        "group relative flex shrink-0 self-center cursor-pointer items-center justify-center overflow-hidden select-none",
+        "rounded-full",
         "outline-none keyboard-focus:ring-2 keyboard-focus:ring-[var(--ring)]",
         "transition-[filter,transform,background-color,color] duration-300 active:scale-[0.98]",
+        "bg-[var(--panel-item-bg,var(--surface-lift))]",
         navTourActive
-          ? "hover:bg-[var(--surface-hover)]"
+          ? "[@media(hover:hover)]:hover:bg-[var(--panel-item-hover,var(--surface-hover))]"
           : "hover:brightness-105",
-        collapsed && "justify-center",
       )}
       style={{
-        height: collapsed ? COLLAPSED_ASSISTANT_ROW_HEIGHT : rowHeight,
+        width: COLLAPSED_ASSISTANT_TILE,
+        height: COLLAPSED_ASSISTANT_TILE,
         gap: SIDEBAR_CHIP_GAP,
-        // While the tour owns the nav, the color leaves this row — it
-        // drains to a plain nav item so the tour's flood is the only color
-        // treatment on screen.
         backgroundColor: navTourActive ? "transparent" : hex,
         color: navTourActive ? "var(--content-default)" : fg,
-        paddingLeft: collapsed ? 0 : ROW_PADDING_X,
-        paddingRight: collapsed ? 0 : ROW_PADDING_X,
       }}
     >
-      {collapsed ? (
-        /* Collapsed rail: the eyes alone, centered, idling in place. */
-        !navTourActive &&
-        eye && (
-          <motion.span
-            className="pointer-events-none relative block"
-            style={{
-              width: eyesWidth,
-              height: eyesHeight,
-              transformOrigin: "50% 100%",
-            }}
-            initial={false}
-            animate={eyesControls}
-          >
-            {eyesSvg}
-          </motion.span>
-        )
-      ) : (
-        <>
-          {/* Leading eye slot, chip-width so the eyes center on the New
-              Chat row's plus chip below; the sprite is absolutely placed
-              so patrols can carry it across (and under) the whole row. */}
-          <span
-            aria-hidden="true"
-            className="pointer-events-none relative flex shrink-0 items-center justify-center"
-            style={{ width: CHIP_SIZE, height: rowHeight }}
-          >
-            {/* While the tour owns the nav the eyes leave the row — the
-                Brain stands in, matching the no-avatar row's icon. */}
-            {navTourActive && (
-              <Brain
-                className="h-3.5 w-3.5"
-                style={{
-                  color: active
-                    ? "var(--content-default)"
-                    : "var(--content-tertiary)",
-                }}
-              />
-            )}
-            {!navTourActive && eye && (
-              <motion.span
-                className="absolute"
-                style={{
-                  width: eyesWidth,
-                  height: eyesHeight,
-                  left: (CHIP_SIZE - eyesWidth) / 2,
-                  top: (rowHeight - eyesHeight) / 2,
-                  transformOrigin: "50% 100%",
-                }}
-                initial={false}
-                animate={eyesControls}
-              >
-                {eyesSvg}
-              </motion.span>
-            )}
-          </span>
-          <span
-            className={`min-w-0 flex-1 truncate text-left ${
-              isMobile ? "text-body-large-default" : "text-body-medium-default"
-            }`}
-          >
-            {label}
-          </span>
-        </>
+      {!navTourActive && eye && (
+        <motion.span
+          className="pointer-events-none relative block"
+          style={{
+            width: eyesWidth,
+            height: eyesHeight,
+            transformOrigin: "50% 100%",
+          }}
+          initial={false}
+          animate={eyesControls}
+        >
+          {eyesSvg}
+        </motion.span>
       )}
     </button>
+  ) : (
+    <span style={tintStyle}>
+      <PanelItem
+        ref={rowRef as Ref<HTMLDivElement>}
+        shape="pill"
+        leadingSlot={eyesSlot}
+        label={label}
+        active={active}
+        onSelect={onSelect}
+        data-tour-id="assistant-page"
+      />
+    </span>
   );
 
   return (
-    <div className="flex flex-col gap-[8px]">
+    <div className={cn("flex flex-col", SIDEBAR_STACK_GAP)}>
       {assistantRow}
       {newConversationRow}
     </div>
