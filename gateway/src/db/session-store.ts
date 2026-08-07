@@ -8,7 +8,17 @@
  */
 
 import type { Database } from "bun:sqlite";
-import { and, count, desc, eq, gt, gte, inArray } from "drizzle-orm";
+import {
+  and,
+  count,
+  desc,
+  eq,
+  gt,
+  gte,
+  inArray,
+  isNull,
+  type SQL,
+} from "drizzle-orm";
 
 import type {
   IdentityBindingStatus,
@@ -42,6 +52,28 @@ const INTERCEPTABLE_STATUSES: SessionStatus[] = [
   "pending_bootstrap",
   "awaiting_response",
 ];
+
+/**
+ * Outbound statuses a fresh outbound session for the same actor supersedes.
+ *
+ * Deliberately excludes `pending`: that is an inbound challenge, superseded by
+ * `createInboundSession` and no business of an outbound mint.
+ */
+const OUTBOUND_LIVE_STATUSES: SessionStatus[] = [
+  "pending_bootstrap",
+  "awaiting_response",
+];
+
+/**
+ * Narrows a session lookup to the one the caller means.
+ *
+ * Both axes exist because a channel can carry several live sessions at once:
+ * one per person verifying, plus the guardian's own flow.
+ */
+export interface SessionFilter {
+  expectedExternalUserId?: string;
+  verificationPurpose?: VerificationPurpose;
+}
 
 const INTERCEPTABLE_STATUSES_SQL = INTERCEPTABLE_STATUSES.map(
   (s) => `'${s}'`,
@@ -205,10 +237,15 @@ export function findPendingSessionForChannel(
 
 /**
  * Latest non-expired session for a channel in one of the given statuses.
+ *
+ * Several people can be verifying on a channel at once, and a guardian's own
+ * flow runs alongside theirs, so a caller that means "the session I am working
+ * on" has to say which. Unfiltered, it gets whoever started most recently.
  */
 export function findLatestSessionByStatuses(
   channel: string,
   statuses: SessionStatus[],
+  filter: SessionFilter = {},
 ): VerificationSession | null {
   const db = getGatewayDb();
 
@@ -220,6 +257,22 @@ export function findLatestSessionByStatuses(
         eq(channelVerificationSessions.channel, channel),
         inArray(channelVerificationSessions.status, statuses),
         gt(channelVerificationSessions.expiresAt, Date.now()),
+        ...(filter.expectedExternalUserId
+          ? [
+              eq(
+                channelVerificationSessions.expectedExternalUserId,
+                filter.expectedExternalUserId,
+              ),
+            ]
+          : []),
+        ...(filter.verificationPurpose
+          ? [
+              eq(
+                channelVerificationSessions.verificationPurpose,
+                filter.verificationPurpose,
+              ),
+            ]
+          : []),
       ),
     )
     .orderBy(desc(channelVerificationSessions.createdAt))
@@ -286,14 +339,106 @@ export function consumeSession(
   return changes > 0 ? { consumed: true, consumedAt } : { consumed: false };
 }
 
+/**
+ * Claim a `pending_bootstrap` session for the mint that redeemed its deep
+ * link, revoking it so the token cannot be spent twice. Status-guarded like
+ * {@link consumeSession}: only the first claimant wins, and a later attempt
+ * on an already-claimed row reports `false` instead of quietly succeeding.
+ *
+ * The claim has to name the row rather than match it by identity. A bootstrap
+ * row carries whichever identity was bound onto it last, so two people
+ * redeeming the same link leave it bound to the second one, and an
+ * identity-matched revoke would miss it for the first.
+ */
+export function claimBootstrapSession(id: string, channel: string): boolean {
+  const raw = (getGatewayDb() as unknown as { $client: Database }).$client;
+  return (
+    raw
+      .prepare(
+        `UPDATE channel_verification_sessions
+       SET status = 'revoked',
+           updated_at = ?
+       WHERE id = ?
+         AND channel = ?
+         AND status = 'pending_bootstrap'`,
+      )
+      .run(Date.now(), id, channel).changes > 0
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Outbound verification sessions (identity-bound)
 // ---------------------------------------------------------------------------
 
 /**
+ * Match rows bound to the same identity a new mint is bound to.
+ *
+ * The key is whichever field `checkIdentityMatch` actually redeems on, in its
+ * precedence order, and the match requires the stored row to be keyed the same
+ * way. A row carrying both a chat id and a user id redeems only on the user id
+ * (`identity-match.ts` treats a shared chat id as insufficient), so it is not
+ * matched by a chat-keyed mint: two people in one group chat keep their own
+ * codes.
+ *
+ * Returns null when the mint carries no identity at all, which is a bootstrap
+ * session; those are claimed by `claimBootstrapSession` instead.
+ */
+function sameBoundIdentity(params: {
+  expectedExternalUserId?: string | null;
+  expectedChatId?: string | null;
+  expectedPhoneE164?: string | null;
+}): SQL | undefined {
+  if (params.expectedExternalUserId) {
+    return eq(
+      channelVerificationSessions.expectedExternalUserId,
+      params.expectedExternalUserId,
+    );
+  }
+  if (params.expectedPhoneE164) {
+    return and(
+      eq(
+        channelVerificationSessions.expectedPhoneE164,
+        params.expectedPhoneE164,
+      ),
+      isNull(channelVerificationSessions.expectedExternalUserId),
+    );
+  }
+  if (params.expectedChatId) {
+    return and(
+      eq(channelVerificationSessions.expectedChatId, params.expectedChatId),
+      isNull(channelVerificationSessions.expectedExternalUserId),
+      isNull(channelVerificationSessions.expectedPhoneE164),
+    );
+  }
+  return undefined;
+}
+
+/**
  * Create an outbound verification session with expected-identity binding.
- * Auto-revokes prior pending/pending_bootstrap/awaiting_response sessions
- * for the same channel to close the replay window.
+ *
+ * Supersedes the actor's own prior outbound sessions, so only their latest
+ * code is live and an intercepted earlier one is useless.
+ *
+ * The supersede is scoped to the actor rather than the channel, because that
+ * is the scope the replay window has. Two people's codes have no replay
+ * relationship: `checkIdentityMatch` binds each to its own expected identity,
+ * so A's code cannot be spent against B's session. A channel-wide revoke would
+ * take a stranger's live code away for no security benefit, and on a channel
+ * where several people can verify at once that is ordinary traffic rather than
+ * an edge case.
+ *
+ * Which field carries that identity is per-channel, so the scope is keyed on
+ * whichever one the consume path redeems on (`sameBoundIdentity`). Telegram
+ * guardian mints carry only a chat id, and keying on the user id alone would
+ * leave every earlier code on that chat live for its full TTL.
+ *
+ * Inbound (`pending`) sessions are left alone. They have their own supersede
+ * in `createInboundSession`, and an outbound mint has nothing to say about an
+ * inbound challenge.
+ *
+ * A session with no expected identity supersedes nothing by actor: a bootstrap
+ * session has no actor until its deep link is redeemed. Those are claimed by
+ * `claimBootstrapSession` before the mint, not superseded by identity here.
  */
 export function createOutboundSession(params: {
   id: string;
@@ -315,15 +460,19 @@ export function createOutboundSession(params: {
   const db = getGatewayDb();
   const now = Date.now();
 
-  db.update(channelVerificationSessions)
-    .set({ status: "revoked", updatedAt: now })
-    .where(
-      and(
-        eq(channelVerificationSessions.channel, params.channel),
-        inArray(channelVerificationSessions.status, INTERCEPTABLE_STATUSES),
-      ),
-    )
-    .run();
+  const sameActor = sameBoundIdentity(params);
+  if (sameActor) {
+    db.update(channelVerificationSessions)
+      .set({ status: "revoked", updatedAt: now })
+      .where(
+        and(
+          eq(channelVerificationSessions.channel, params.channel),
+          inArray(channelVerificationSessions.status, OUTBOUND_LIVE_STATUSES),
+          sameActor,
+        ),
+      )
+      .run();
+  }
 
   const row = {
     id: params.id,
@@ -370,12 +519,18 @@ export function getSessionById(id: string): VerificationSession | null {
 /**
  * Find the most recent pending_bootstrap or awaiting_response session
  * for a given channel.
+ *
+ * Pass a filter when the caller means a particular session: an actor for one
+ * person's, a purpose to tell a guardian's own flow apart from a requester's.
+ * Unfiltered this returns whoever started most recently, which is right for a
+ * caller asking "is anything in flight here" and wrong for one about to
+ * resend, cancel, or report state back.
  */
-export function findActiveSession(channel: string): VerificationSession | null {
-  return findLatestSessionByStatuses(channel, [
-    "pending_bootstrap",
-    "awaiting_response",
-  ]);
+export function findActiveSession(
+  channel: string,
+  filter: SessionFilter = {},
+): VerificationSession | null {
+  return findLatestSessionByStatuses(channel, OUTBOUND_LIVE_STATUSES, filter);
 }
 
 /**
