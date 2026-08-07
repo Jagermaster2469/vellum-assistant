@@ -1,10 +1,25 @@
 /**
- * Data-shaping hook for the assistant sidebar.
+ * Which sections the sidebar has, and in what order.
  *
- * Owns conversation grouping, collapse/expand state, attention-forced
- * expansion, and the user's section order. Returns a
- * typed object the presentational `AssistantSideMenu` renders without any
- * inline computation, `useEffect`, or derived state.
+ * Owns the section *list*, collapse/expand state, attention-forced expansion,
+ * and the user's section order. It does not own a section's contents: Pinned
+ * and each custom group fetch their own rows where they render, through
+ * {@link useSectionConversations}. What this hook still puts on
+ * {@link SidebarSection.all} is the list derived from the foreground page,
+ * which those sections use only as the fallback they paint while their own
+ * query is pending or gated off.
+ *
+ * That split is the point of LUM-2443. Deriving a section by filtering one
+ * shared list makes a *complete* list a precondition for the sidebar being
+ * right, which is why a windowed conversation list kept getting reverted.
+ * Discovery is what stays here, and it never needed the conversation list:
+ * Pinned and Chats are fixed, and the custom groups come from the groups API.
+ *
+ * Which sections exist is still decided here, from the loaded list. That is
+ * the last client-side derivation of conversation data in the sidebar, and it
+ * survives only because the foreground list still drains in full. See the
+ * comment on `defaultSections` for why it cannot simply move down with the
+ * contents, and for the point at which it has to go.
  *
  * Two views share all of that. In `all` (the default) the sections stop at
  * the curated layer - Pinned and the custom groups - and everything else
@@ -60,10 +75,7 @@ import { mergeConversationLists } from "@/utils/conversation-cache";
 import {
   useBackgroundConversationListQuery,
   useScheduledConversationListQuery,
-  useSectionConversationListQuery,
 } from "@/hooks/conversation-queries";
-import { SYSTEM_PINNED_GROUP_ID } from "@/utils/conversation-list-fetchers";
-import { useSupportsGroupFilter } from "@/lib/backwards-compat/use-supports-group-filter";
 import { useAssistantLifecycleStore } from "@/assistant/lifecycle-store";
 import { getChannelLabel } from "@/utils/channel-presentation";
 import { RECENTS_SECTION_LABEL } from "@/domains/chat/utils/sidebar-section-icon";
@@ -78,9 +90,6 @@ import { RECENTS_SECTION_LABEL } from "@/domains/chat/utils/sidebar-section-icon
  * each render.
  */
 const EMPTY_KEYS: string[] = [];
-
-/** Stable reference so the Pinned query's options are not rebuilt each render. */
-const PINNED_FILTER = { groupId: SYSTEM_PINNED_GROUP_ID } as const;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -261,25 +270,6 @@ export function useSidebarState({
       isAssistantActive && scheduledReady,
     );
 
-  /* Pinned asks the server for its own members rather than taking whatever
-     pinned rows happen to be in the foreground page. Pinning is stored as
-     group membership, so one filter answers it, and a pinned conversation
-     that sorts many pages deep still appears here.
-
-     Gated: an assistant that predates the filter ignores the unrecognized
-     parameter and returns the entire conversation list, which would render
-     in full inside Pinned. Below the gate the section keeps deriving from
-     the list it is handed, exactly as it did before. The gate is scoped to
-     this assistant so a version still held for the outgoing one cannot
-     authorize a filtered fetch against the incoming one mid-switch. */
-  const supportsGroupFilter = useSupportsGroupFilter(assistantId);
-  const { conversations: pinnedFromQuery, isPending: pinnedPending } =
-    useSectionConversationListQuery(
-      assistantId,
-      PINNED_FILTER,
-      isAssistantActive && supportsGroupFilter,
-    );
-
   const allConversations = useMemo(
     () =>
       mergeConversationLists(
@@ -301,19 +291,6 @@ export function useSidebarState({
     [allConversations, conversationGroups, viewMode],
   );
 
-  /* Keep painting the derived rows until the section query has answered once.
-     `pinnedFromQuery` is empty while pending, and an empty Pinned section is
-     dropped entirely below, so switching on the gate alone would hide Pinned
-     on every cold load until a multi-page drain finished. The derived list is
-     a subset (the pinned rows that happen to be in the foreground page), so
-     this paints immediately and fills in. `isPending` is false once data has
-     landed, so a later refetch never falls back.
-
-     The server's order is rendered as-is. Every section, this one included,
-     is ordered by recency now that nothing writes `display_order`. */
-  const pinnedConversations =
-    supportsGroupFilter && !pinnedPending ? pinnedFromQuery : grouped.pinned;
-
   // --- Section order ---
 
   // Default layout: Pinned, then the user's custom groups, then - in the
@@ -322,14 +299,28 @@ export function useSidebarState({
   // while channel sections come and go with traffic. In the flat view the
   // sections stop at the curated layer: everything else renders as one list
   // below them.
+  /* This list decides which sections exist, and it is the only thing that
+     does. A section's *contents* come from its own query, but every entry
+     here renders: `curatedSectionCount` and the move-up/move-down nudges
+     count these entries, so an entry that renders nothing draws the curated
+     rule over an empty tier and offers a move that swaps with something off
+     screen. One predicate for membership and visibility, or the two drift.
+
+     Membership comes from the loaded list, which is accurate while that list
+     drains in full. It stops being accurate under a windowed list
+     (LUM-2444), the same change that removes `groupConversations`, so
+     section existence needs a server-side source at that point. A section
+     cannot answer this for itself in the meantime: emptiness has to be known
+     before the list is built, and this hook cannot mount N queries for N
+     groups. */
   const defaultSections = useMemo((): SidebarSection[] => {
     const list: SidebarSection[] = [];
-    if (pinnedConversations.length > 0) {
+    if (grouped.pinned.length > 0) {
       list.push({
         type: "pinned",
         key: "pinned",
         label: "Pinned",
-        all: pinnedConversations,
+        all: grouped.pinned,
       });
     }
     for (const group of grouped.customGroups) {
@@ -361,7 +352,7 @@ export function useSidebarState({
     return list;
   }, [
     viewMode,
-    pinnedConversations,
+    grouped.pinned,
     grouped.customGroups,
     grouped.recents,
     grouped.channelSections,
