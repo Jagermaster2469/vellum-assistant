@@ -31,3 +31,35 @@ export interface AssistantChannelState {
   address?: string;
   warning?: string;
 }
+
+// ---------------------------------------------------------------------------
+// Plugin-declared channels
+// ---------------------------------------------------------------------------
+
+/**
+ * A channel an installed plugin brings by declaring ingress: a row of
+ * `/v1/channels/available` whose `source` is `plugin:<name>`.
+ *
+ * Kept apart from {@link AssistantChannelState} rather than widened into it:
+ * the built-in adapters carry a readiness snapshot, a credential form, a
+ * disconnect path and a trust floor, and a plugin channel has none of those
+ * here. Its id is namespaced (`plugin:<name>`), so the two sets cannot
+ * collide in a selection key.
+ */
+export interface PluginChannelSummary {
+  /** The row's `source`, `plugin:<pluginName>`, unique across the rail. */
+  id: string;
+  /** Directory name of the declaring plugin, for linking to its page. */
+  plugin: string;
+  label: string;
+  description?: string;
+  /** Lucide icon name without the `lucide-` prefix. */
+  icon?: string;
+}
+
+/** Key of whichever row the Channels rail has selected. */
+export type ChannelRowKey = SetupChannelId | string;
+
+export function isPluginChannelKey(key: string): boolean {
+  return key.startsWith("plugin:");
+}
