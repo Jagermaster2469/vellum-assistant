@@ -11,7 +11,10 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { channelsAvailableGetOptions } from "@/generated/daemon/@tanstack/react-query.gen";
-import type { PluginChannelSummary } from "@/types/channel-types";
+import {
+  pluginChannelKey,
+  type PluginChannelSummary,
+} from "@/types/channel-types";
 
 /** `plugin:<name>`, the source marking a channel an installed plugin brings. */
 const PLUGIN_SOURCE_PREFIX = "plugin:";
@@ -29,8 +32,8 @@ export function usePluginChannels(assistantId: string): PluginChannelSummary[] {
       response.channels
         .filter((channel) => channel.source?.startsWith(PLUGIN_SOURCE_PREFIX))
         .map((channel) => ({
-          id: channel.source!,
-          plugin: channel.source!.slice(PLUGIN_SOURCE_PREFIX.length),
+          plugin: channel.id,
+          key: pluginChannelKey(channel.id),
           label: channel.label,
           description: channel.subtitle,
           icon: channel.icon,

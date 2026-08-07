@@ -47,14 +47,27 @@ export interface AssistantChannelState {
  * collide in a selection key.
  */
 export interface PluginChannelSummary {
-  /** The row's `source`, `plugin:<pluginName>`, unique across the rail. */
-  id: string;
-  /** Directory name of the declaring plugin, for linking to its page. */
+  /** Directory name of the declaring plugin. */
   plugin: string;
+  /**
+   * Rail key and URL segment, {@link PLUGIN_CHANNEL_KEY_PREFIX} then the
+   * plugin name. Namespaced rather than bare so a plugin can never collide
+   * with a built-in adapter's key, whatever it is called: the separation is a
+   * property of the key here, not a promise kept somewhere else.
+   */
+  key: string;
   label: string;
   description?: string;
   /** Lucide icon name without the `lucide-` prefix. */
   icon?: string;
+}
+
+/** Namespace for a plugin channel's rail key and URL segment. */
+export const PLUGIN_CHANNEL_KEY_PREFIX = "plugins-";
+
+/** Rail key and URL segment for a plugin channel. */
+export function pluginChannelKey(plugin: string): string {
+  return `${PLUGIN_CHANNEL_KEY_PREFIX}${plugin}`;
 }
 
 /** Key of whichever row the Channels rail has selected. */

@@ -16,8 +16,8 @@ const CHANNELS: AssistantChannelState[] = [
 
 const PLUGIN_CHANNELS: PluginChannelSummary[] = [
   {
-    id: "plugin:courier",
     plugin: "courier",
+    key: "plugins-courier",
     label: "Courier",
     description: "Reach the assistant by carrier pigeon.",
     icon: "send",
@@ -204,7 +204,7 @@ describe("ChannelAdapterList", () => {
     );
 
     fireEvent.click(rowFor("Courier"));
-    expect(selected).toBe("plugin:courier");
+    expect(selected).toBe("plugins-courier");
   });
 
   test("lists a plugin channel whose manifest names no icon", () => {
@@ -215,12 +215,12 @@ describe("ChannelAdapterList", () => {
         channels={[]}
         pluginChannels={[
           {
-            id: "plugin:meeting-bot",
             plugin: "meeting-bot",
+            key: "plugins-meeting-bot",
             label: "Meeting Bot",
           },
         ]}
-        selectedKey="plugin:meeting-bot"
+        selectedKey="plugins-meeting-bot"
         onSelect={() => {}}
       />,
     );
@@ -235,7 +235,7 @@ describe("ChannelAdapterList", () => {
       <ChannelAdapterList
         channels={[]}
         pluginChannels={PLUGIN_CHANNELS}
-        selectedKey="plugin:courier"
+        selectedKey="plugins-courier"
         onSelect={() => {}}
       />,
     );
