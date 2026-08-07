@@ -24,8 +24,10 @@ import { useAssistantLifecycleStore } from "@/assistant/lifecycle-store";
 import type { SidebarSection } from "@/domains/chat/use-sidebar-state";
 import { useSectionConversationListQuery } from "@/hooks/conversation-queries";
 import { useSupportsGroupFilter } from "@/lib/backwards-compat/use-supports-group-filter";
+import { useSupportsNativeOriginFilter } from "@/lib/backwards-compat/use-supports-native-origin-filter";
 import type { Conversation } from "@/types/conversation-types";
 import {
+  NATIVE_ORIGIN_CHANNEL,
   ORIGIN_CHANNELS,
   SYSTEM_ALL_GROUP_ID,
   SYSTEM_PINNED_GROUP_ID,
@@ -52,13 +54,31 @@ const NO_FILTER: SectionConversationFilter = {};
  * well as that group's; without `system:all` it would render in both cards and
  * break "a conversation appears in exactly one section".
  *
- * Chats has no filter yet. In Grouped view it is what no channel claimed,
- * which needs `originChannel: "vellum"` to also match rows that are not yet
- * attributed - a server predicate that has to land and be released before a
- * gate can name it.
+ * Chats is what nothing else claimed: ungrouped and native. It carries the
+ * same two axes as a channel, with `vellum` as the channel, which is why it
+ * needs `supportsNativeOrigin`. Below that gate `vellum` is a strict equality
+ * on the daemon and matches only explicitly stamped rows, so asking for it
+ * would return a fraction of the section and look like a quiet account rather
+ * than a broken filter. Chats stays on its derived rows there.
+ *
+ * Chats is a section only in Grouped view. The `all` view renders the same
+ * conversations as `flatList`, which is not a section and is not wired here.
+ *
+ * One asymmetry to know about, because it looks like a bug from either side.
+ * `Conversation.originChannel` is binding-first on the client
+ * (`channelBinding.sourceChannel ?? conversationOriginChannel`, see
+ * `toConversation`), while these filters are matched against the
+ * `origin_channel` column alone. The two agree once a conversation's first
+ * inbound message stamps the column, and diverge before that: a row whose
+ * binding already names a channel but whose column is still unattributed
+ * derives into that channel's section and is fetched into Chats, since an
+ * unattributed column reads as native. Transient, self-correcting when the
+ * message lands, and in the safe direction: the row is in exactly one
+ * section throughout, never zero and never two.
  */
 function sectionFilter(
   section: SidebarSection,
+  supportsNativeOrigin: boolean,
 ): SectionConversationFilter | null {
   switch (section.type) {
     case "pinned":
@@ -70,7 +90,12 @@ function sectionFilter(
         ? { groupId: SYSTEM_ALL_GROUP_ID, originChannel: section.channelId }
         : null;
     case "recents":
-      return null;
+      return supportsNativeOrigin
+        ? {
+            groupId: SYSTEM_ALL_GROUP_ID,
+            originChannel: NATIVE_ORIGIN_CHANNEL,
+          }
+        : null;
   }
 }
 
@@ -94,12 +119,14 @@ function isOriginChannel(
  * Falls back to the derived rows in four cases, all of which have to paint
  * something rather than an empty section:
  *
- * 1. **The section has no filter yet** (Chats).
- * 2. **The gate is closed.** An assistant that predates the `groupId` filter
- *    ignores the unrecognized parameter and answers 200 with the *entire*
- *    conversation list, which would render in full inside one section. The
- *    gate is assistant-scoped, so a version still held for the outgoing
- *    assistant cannot authorize a filtered fetch against the incoming one.
+ * 1. **The section has no filter.** A channel whose id this client's schema
+ *    does not carry, and Chats on an assistant below the native-origin gate.
+ * 2. **The group gate is closed.** An assistant that predates the `groupId`
+ *    filter ignores the unrecognized parameter and answers 200 with the
+ *    *entire* conversation list, which would render in full inside one
+ *    section. Both gates are assistant-scoped, so a version still held for
+ *    the outgoing assistant cannot authorize a filtered fetch against the
+ *    incoming one.
  * 3. **The query has not answered once yet.** `conversations` is empty while
  *    pending, and an empty section is dropped from the sidebar entirely, so
  *    switching on the gate alone would make the section vanish on every cold
@@ -126,10 +153,17 @@ export function useSectionConversations(
     (s) => s.assistantState.kind === "active",
   );
   const supportsGroupFilter = useSupportsGroupFilter(assistantId);
+  /* Chats additionally needs the daemon to read an unattributed row as
+     native. Strictly later than the group gate on the same base version, so
+     anything passing this passes that. */
+  const supportsNativeOrigin = useSupportsNativeOriginFilter(assistantId);
 
   // Memoized so the query options are not rebuilt on every render: the filter
   // is part of the query key, and a fresh object each render would churn it.
-  const filter = useMemo(() => sectionFilter(section), [section]);
+  const filter = useMemo(
+    () => sectionFilter(section, supportsNativeOrigin),
+    [section, supportsNativeOrigin],
+  );
 
   const enabled = filter !== null && isAssistantActive && supportsGroupFilter;
   const { conversations, hasData } = useSectionConversationListQuery(
