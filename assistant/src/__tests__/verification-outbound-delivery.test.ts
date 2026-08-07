@@ -78,7 +78,7 @@ mock.module("../runtime/channel-verification-service.js", () => ({
   getGuardianBinding: async () => null,
 }));
 
-const { startOutbound } =
+const { startOutbound, resendOutbound } =
   await import("../runtime/verification-outbound-actions.js");
 
 /**
@@ -97,6 +97,10 @@ const DESTINATIONS: Array<{ channel: string; destination: string }> = [
 
 beforeEach(() => {
   deliveries.length = 0;
+  // Sessions persist in the sim, and `findActiveSession` returns the latest
+  // for a channel, so without this a test would resend against the previous
+  // test's session.
+  sessions.resetVerificationSessionsSim();
 });
 
 describe("startOutbound delivers from inside the action", () => {
@@ -113,6 +117,34 @@ describe("startOutbound delivers from inside the action", () => {
       expect(sent[0].text.length).toBeGreaterThan(0);
     });
   }
+
+  test("resend delivers too, on every channel that starts", async () => {
+    // Start and resend run the same mint-and-send, so this is coverage of that
+    // shared path from its second entry point rather than of resend as a
+    // feature.
+    for (const { channel, destination } of DESTINATIONS) {
+      sessions.resetVerificationSessionsSim();
+      const start = await startOutbound({
+        channel: channel as never,
+        destination,
+      });
+      expect(start.verificationSessionId).toBeDefined();
+
+      // A start stamps a 15-second resend cooldown. That cooldown is its own
+      // behaviour; clearing it here is what lets this reach the delivery.
+      sessions.updateSessionDelivery(
+        start.verificationSessionId!,
+        Date.now(),
+        1,
+        null,
+      );
+      deliveries.length = 0;
+
+      const result = await resendOutbound({ channel: channel as never });
+      expect(result.success).toBe(true);
+      expect(deliveries.filter((d) => d.transport === channel)).toHaveLength(1);
+    }
+  });
 
   test("no channel returns a payload for the caller to send instead", async () => {
     // A `_pending*` field means some channel is minting a session whose
