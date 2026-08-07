@@ -237,10 +237,24 @@ describe("findActiveSession", () => {
 
   test("unfiltered, returns the most recent regardless of actor", () => {
     // The shape a caller gets when it does not say whose session it means.
+    //
+    // Both mints land in the same millisecond, so `created_at` ties and the
+    // insert-order tiebreak is the only thing deciding this.
     mintOutboundFor(ALICE);
     const bob = mintOutboundFor(BOB);
 
     expect(findActiveSession(CHANNEL)?.id).toBe(bob.id);
+  });
+
+  test("the latest is the one written last, not the one stamped last", () => {
+    // Ten same-millisecond mints. Any tie-break that is not insert order
+    // picks the wrong one here well before ten.
+    let last = mintOutboundFor(ALICE);
+    for (let i = 0; i < 9; i += 1) {
+      last = mintOutboundFor(`actor-${i}`);
+    }
+
+    expect(findActiveSession(CHANNEL)?.id).toBe(last.id);
   });
 
   test("returns null for an actor with nothing in flight", () => {

@@ -8,7 +8,7 @@
  */
 
 import type { Database } from "bun:sqlite";
-import { and, count, desc, eq, gt, gte, inArray } from "drizzle-orm";
+import { and, count, desc, eq, gt, gte, inArray, sql } from "drizzle-orm";
 
 import { bindsSameIdentity, boundIdentity } from "@vellumai/gateway-client";
 import type {
@@ -267,7 +267,19 @@ export function findLatestSessionByStatuses(
           : []),
       ),
     )
-    .orderBy(desc(channelVerificationSessions.createdAt))
+    // `created_at` is a millisecond stamp, so two sessions minted in the same
+    // tick tie on it and SQLite is free to return either. Several people can
+    // be verifying at once, so the tie breaks on insert order: rowid rises
+    // with every insert, making "latest" mean the row written last rather
+    // than whichever the planner reached first.
+    //
+    // SQLite qualifies rowid monotonicity in two ways, neither of which
+    // reaches this ordering. A rowid may be reused after the highest-numbered
+    // row is deleted, but reuse only ever hands back the largest value, so a
+    // reused row still sorts newest. `VACUUM` may renumber a table whose
+    // primary key is not INTEGER, which this one is not, but it renumbers in
+    // existing rowid order, so relative order survives.
+    .orderBy(desc(channelVerificationSessions.createdAt), desc(sql`rowid`))
     .get();
 
   return row ? rowToSession(row) : null;
