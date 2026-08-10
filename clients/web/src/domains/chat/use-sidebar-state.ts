@@ -71,6 +71,7 @@ import { mergeConversationLists } from "@/utils/conversation-cache";
 import {
   useBackgroundConversationListQuery,
   useScheduledConversationListQuery,
+  useSidebarSectionsQuery,
 } from "@/hooks/conversation-queries";
 import { useAssistantLifecycleStore } from "@/assistant/lifecycle-store";
 import { getChannelLabel } from "@/utils/channel-presentation";
@@ -250,6 +251,12 @@ export function useSidebarState({
       isAssistantActive && scheduledReady,
     );
 
+  /* The daemon's section index: which sections exist and what their badges
+     say, with no conversation rows. `null` when the assistant predates the
+     endpoint or the read has not resolved, in which case existence keeps
+     deriving from the loaded list below. */
+  const indexSections = useSidebarSectionsQuery(assistantId, isAssistantActive);
+
   const allConversations = useMemo(
     () =>
       mergeConversationLists(
@@ -294,6 +301,74 @@ export function useSidebarState({
      before the list is built, and this hook cannot mount N queries for N
      groups. */
   const defaultSections = useMemo((): SidebarSection[] => {
+    /* Which sections exist has two possible sources, never mixed within one
+       render. When the daemon serves the section index, it is authoritative
+       for existence AND for group metadata: it is one consistent snapshot,
+       where existence-from-index with names-from-the-groups-query could
+       disagree between fetches. The derived buckets stay as each section's
+       `all` fallback rows either way. When the index is `null` (an assistant
+       without the endpoint, or a read that has not resolved), existence
+       derives from the loaded list in the branch below, the one
+       implementation shared with every assistant that never serves the
+       index. */
+    if (indexSections !== null) {
+      const list: SidebarSection[] = [];
+      const bucketByGroupId = new Map(
+        grouped.customGroups.map((g) => [g.id, g]),
+      );
+      const rowsByChannelId = new Map(
+        grouped.channelSections.map((s) => [s.channelId, s.conversations]),
+      );
+      if (indexSections.some((s) => s.kind === "pinned")) {
+        list.push({
+          type: "pinned",
+          key: "pinned",
+          label: "Pinned",
+          all: grouped.pinned,
+        });
+      }
+      const groupRows = indexSections
+        .filter((s) => s.kind === "group")
+        .sort((a, b) => a.sortPosition - b.sortPosition);
+      for (const row of groupRows) {
+        list.push({
+          type: "group",
+          key: row.groupId,
+          label: row.name,
+          all: bucketByGroupId.get(row.groupId)?.conversations ?? [],
+          group: {
+            id: row.groupId,
+            name: row.name,
+            icon: row.icon,
+            conversations:
+              bucketByGroupId.get(row.groupId)?.conversations ?? [],
+          },
+        });
+      }
+      list.push({
+        type: "recents",
+        key: "recents",
+        label: RECENTS_SECTION_LABEL,
+        all: grouped.recents,
+        holdsChannels: viewMode !== "grouped",
+      });
+      if (viewMode === "grouped") {
+        const channelRows = indexSections
+          .filter((s) => s.kind === "channel")
+          .sort((a, b) => a.channelId.localeCompare(b.channelId));
+        for (const row of channelRows) {
+          list.push({
+            type: "channel",
+            key: channelSectionKey(row.channelId),
+            label: getChannelLabel(row.channelId),
+            all: rowsByChannelId.get(row.channelId) ?? [],
+            channelId: row.channelId,
+          });
+        }
+      }
+      return list;
+    }
+
     const list: SidebarSection[] = [];
     if (grouped.pinned.length > 0) {
       list.push({
@@ -343,6 +418,7 @@ export function useSidebarState({
     return list;
   }, [
     viewMode,
+    indexSections,
     grouped.pinned,
     grouped.customGroups,
     grouped.recents,
