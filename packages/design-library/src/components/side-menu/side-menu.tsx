@@ -14,6 +14,8 @@ import {
   type Ref,
 } from "react";
 
+import { Slot } from "@radix-ui/react-slot";
+
 import { Typography } from "../typography";
 import { Tooltip } from "../tooltip";
 import { cn } from "../../utils/cn";
@@ -38,6 +40,7 @@ import { cn } from "../../utils/cn";
  *     │   ├── SideMenu.Section   — labeled group with optional `actions`
  *     │   │   └── SideMenu.SubList
  *     │   │       └── SideMenu.Item
+ *     │   ├── SideMenu.SectionHeader: title row of a caller-drawn group
  *     │   └── SideMenu.Separator
  *     └── SideMenu.Footer        — bottom slot (sticks via margin-top: auto)
  *
@@ -115,17 +118,20 @@ export const SIDE_MENU_MIN_WIDTH = 220;
 export const SIDE_MENU_MAX_WIDTH = 400;
 
 /**
- * The circle a card or pill becomes when the rail collapses: a tile
- * `SideMenu.Item`, a section trigger, and whatever a caller mounts through a
- * slot. It is `PanelItem`'s and `Button`'s height, because a tile is one of
- * those shapes with its label taken away, and holding that height is what
- * keeps its glyph on the axis the expanded pill puts it on.
+ * The height of a top-level rail pill (an assistant identity row, New Chat, a
+ * pinned app, a section header, Preferences), and so also the diameter of the
+ * circle each of those becomes when the rail collapses: a tile is one of those
+ * pills with its label taken away, and holding the pill's height is what keeps
+ * its glyph on the axis the expanded pill puts it on.
  *
  * A list row keeps its own denser height: the rail collapses cards and pills
  * into tiles, and a conversation row is neither.
  *
  * Exported so a caller drawing its own tile sizes it from here rather than
  * from a matching literal, which is the only way the column stays one width.
+ * A `PanelItem` pill needs nothing: the rail publishes this as
+ * `--side-menu-tile-size` and the pill shape reads it, so its height is not a
+ * caller's decision.
  */
 export const SIDE_MENU_TILE_SIZE = 36;
 
@@ -469,6 +475,52 @@ function SideMenuSeparator({
 }
 
 // ---------------------------------------------------------------------------
+// SectionHeader: the title row of a group of rows
+// ---------------------------------------------------------------------------
+
+export interface SideMenuSectionHeaderProps extends ComponentProps<"div"> {
+  /**
+   * Render the caller's own element instead, typically a disclosure trigger,
+   * with this row's geometry merged onto it.
+   */
+  asChild?: boolean;
+  ref?: Ref<HTMLDivElement>;
+}
+
+/**
+ * The title row of a group in the rail. It is a top-level row like a pill or a
+ * tile, so it stands at the same height, taken from the property
+ * {@link SideMenuRoot} publishes ({@link SIDE_MENU_TILE_SIZE}); on a
+ * touch-sized viewport it grows to its own padding the way every other row
+ * does. It wears small caps and no resting surface, which is why it is this
+ * rather than a `PanelItem`.
+ *
+ * Owns the vertical geometry, the part that has to agree with the rows around
+ * it. Typography, horizontal insets, and whatever sits on the trailing edge
+ * stay with the caller, whose sidebar decides those.
+ */
+function SideMenuSectionHeader({
+  asChild = false,
+  className,
+  ref,
+  ...rest
+}: SideMenuSectionHeaderProps) {
+  const Component = asChild ? Slot : "div";
+  return (
+    <Component
+      ref={ref}
+      data-slot="side-menu-section-header"
+      className={cn(
+        "flex shrink-0 items-center rounded-[6px]",
+        "h-[var(--side-menu-tile-size)] max-md:h-auto",
+        className,
+      )}
+      {...rest}
+    />
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Section — title row + right-aligned actions
 // ---------------------------------------------------------------------------
 
@@ -578,11 +630,12 @@ export interface SideMenuItemProps {
   /**
    * `"tile"` renders the collapsed-rail affordance: the whole treatment a row
    * reduces to when the rail collapses, not a geometry switch. It squares to
-   * its own row height, centers in the rail column, rounds fully, and carries
-   * the resting surface the expanded card or pill wore - collapsing changes
-   * the shape of a thing, not whether it has a surface. The squaring is part
-   * of it, not an extra: a collapsed row is `w-full` of a column slightly
-   * wider than it is tall, so rounding it alone draws an ellipse.
+   * the pill height ({@link SIDE_MENU_TILE_SIZE}, which a row carrying this
+   * shape also sets itself to), centers in the rail column, rounds fully, and
+   * carries the resting surface the expanded card or pill wore: collapsing
+   * changes the shape of a thing, not whether it has a surface. The squaring
+   * is part of it, not an extra: a collapsed row is `w-full` of a column
+   * slightly wider than it is tall, so rounding it alone draws an ellipse.
    *
    * Named for what it is rather than for its outline, because it decides
    * colour as well as form. A caller reaching for a round row somewhere other
@@ -964,6 +1017,7 @@ type SideMenuComponent = typeof SideMenuRoot & {
   Body: typeof SideMenuBody;
   Footer: typeof SideMenuFooter;
   Section: typeof SideMenuSection;
+  SectionHeader: typeof SideMenuSectionHeader;
   SubList: typeof SideMenuSubList;
   Item: typeof SideMenuItem;
   Separator: typeof SideMenuSeparator;
@@ -974,6 +1028,7 @@ SideMenu.Header = SideMenuHeader;
 SideMenu.Body = SideMenuBody;
 SideMenu.Footer = SideMenuFooter;
 SideMenu.Section = SideMenuSection;
+SideMenu.SectionHeader = SideMenuSectionHeader;
 SideMenu.SubList = SideMenuSubList;
 SideMenu.Item = SideMenuItem;
 SideMenu.Separator = SideMenuSeparator;
@@ -985,6 +1040,7 @@ export {
   SideMenuHeader,
   SideMenuItem,
   SideMenuSection,
+  SideMenuSectionHeader,
   SideMenuSeparator,
   SideMenuSubList,
   useSideMenuCollapsed,
