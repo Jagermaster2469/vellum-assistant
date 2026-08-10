@@ -40,6 +40,7 @@ export const NAMESPACES = [
   "schedules",
   "account",
   "channels",
+  "settings",
   "workspace",
 ] as const;
 

@@ -39,6 +39,7 @@ import enWorkspace from "@/i18n/locales/en/workspace.json";
 import enChat from "@/i18n/locales/en/chat.json";
 import enCommon from "@/i18n/locales/en/common.json";
 import enSchedules from "@/i18n/locales/en/schedules.json";
+import enSettings from "@/i18n/locales/en/settings.json";
 import { NAMESPACES, type Namespace } from "@/i18n/namespaces";
 import { DEFAULT_LOCALE, type SupportedLocale } from "@/i18n/supported-locales";
 
@@ -64,6 +65,7 @@ export const FALLBACK_CATALOGS: LocaleCatalogs = {
   schedules: enSchedules,
   account: enAccount,
   channels: enChannels,
+  settings: enSettings,
   workspace: enWorkspace,
 };
 
@@ -78,6 +80,7 @@ const CATALOG_LOADERS: Record<
     schedules: () => import("@/i18n/locales/es/schedules.json"),
     account: () => import("@/i18n/locales/es/account.json"),
     channels: () => import("@/i18n/locales/es/channels.json"),
+    settings: () => import("@/i18n/locales/es/settings.json"),
     workspace: () => import("@/i18n/locales/es/workspace.json"),
   },
 };

@@ -18,6 +18,7 @@ import type workspace from "@/i18n/locales/en/workspace.json";
 import type chat from "@/i18n/locales/en/chat.json";
 import type common from "@/i18n/locales/en/common.json";
 import type schedules from "@/i18n/locales/en/schedules.json";
+import type settings from "@/i18n/locales/en/settings.json";
 
 declare module "i18next" {
   interface CustomTypeOptions {
@@ -28,6 +29,7 @@ declare module "i18next" {
       schedules: typeof schedules;
       account: typeof account;
       channels: typeof channels;
+      settings: typeof settings;
       workspace: typeof workspace;
     };
     returnNull: false;
