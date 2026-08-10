@@ -46,9 +46,10 @@
  */
 
 import {
-  inboundFieldPath,
-  readInboundField,
+  inboundFieldSource,
+  readFieldSource,
   type IngressInbound,
+  type InboundFieldName,
 } from "./ingress-inbound.js";
 import type { PluginInboundEvent } from "./inbound-event.js";
 import { canonicalizeIdentityAs } from "../verification/identity.js";
@@ -128,8 +129,8 @@ export function readPluginInbound(
   opts: ReadPluginInboundOptions,
 ): PluginInboundReading {
   const { plugin, inbound, body, receivedAt } = opts;
-  const read = (field: Parameters<typeof inboundFieldPath>[1]) =>
-    readInboundField(body, inboundFieldPath(inbound, field));
+  const read = (field: InboundFieldName) =>
+    readFieldSource(body, inboundFieldSource(inbound, field));
 
   const conversation = read("conversationExternalId")?.trim();
   const actor = read("actorExternalId")?.trim();
