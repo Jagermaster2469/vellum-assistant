@@ -38,11 +38,14 @@ describe("PanelItem trailing action", () => {
     expect(html).toContain("has-[[aria-expanded=true]]:opacity-100");
   });
 
-  test("stays visible on touch devices (no hover to reveal it)", () => {
+  test("stays visible where the device cannot hover", () => {
+    // The reveal is keyed on the hover capability it depends on, not on the
+    // pointer beside it: the two are independent media features, and it is
+    // the missing hover that makes a hover-revealed action unreachable.
     // Callers that already have their own touch affordance (long-press,
     // swipe) simply don't pass `trailingAction` on touch, rather than
     // asking PanelItem to hide one it was given, see conversation-row.tsx.
-    expect(renderRow()).toContain("pointer-coarse:opacity-100");
+    expect(renderRow()).toContain("[@media(hover:none)]:opacity-100");
   });
 
   test("stays visible on the active row", () => {
@@ -89,6 +92,15 @@ describe("PanelItem badge", () => {
   test("a bare badge next to a trailing action skips the extra inset (gap-2 already separates them)", () => {
     const html = renderWithBadge(true, createElement("button", {}, "⋯"));
     expect(html).not.toContain("mr-2");
+  });
+
+  test("yields the slot where there is no hover, since the action is shown there", () => {
+    // The badge and the trailing action crossfade in one cell, so the badge
+    // has to leave under exactly the conditions that bring the action in.
+    // Where the device cannot hover the action is permanently shown, so a
+    // badge that only left on hover would sit underneath it.
+    const html = renderWithBadge(false, createElement("button", {}, "⋯"));
+    expect(html).toContain("[@media(hover:none)]:opacity-0");
   });
 });
 
