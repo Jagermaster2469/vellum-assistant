@@ -1,4 +1,11 @@
 {
+  "addToChatSheet": {
+    "title": "Add to chat",
+    "closeAriaLabel": "Close",
+    "camera": "Camera",
+    "gallery": "Find in Gallery",
+    "files": "Files"
+  },
   "cacheBreakpointMapCard": {
     "description": "Where the {count, plural, one {# cache breakpoint} other {# cache breakpoints}} fell across this request's prefix, and which segments were read versus re-created.",
     "estimatedTokens": "≈ {count} tokens",
@@ -89,6 +96,11 @@
     "syntheticAgentLoopErrorWithReason": "Agent loop error · {reason}",
     "syntheticYield": "Yield · compaction couldn't fit next step",
     "unrecognizedCall": "Unrecognized call"
+  },
+  "chatComposer": {
+    "addToChat": "Add to chat",
+    "askAssistantPlaceholder": "Ask {assistantName}",
+    "disclaimer": "Vellum uses external AI models and can make mistakes"
   },
   "compactionTab": {
     "compactedMessages": "{count} compacted",

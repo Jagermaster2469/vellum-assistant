@@ -1,4 +1,11 @@
 {
+  "addToChatSheet": {
+    "title": "Añadir al chat",
+    "closeAriaLabel": "Cerrar",
+    "camera": "Cámara",
+    "gallery": "Buscar en la galería",
+    "files": "Archivos"
+  },
   "cacheBreakpointMapCard": {
     "description": "Dónde {count, plural, one {cayó # punto de corte de caché} other {cayeron # puntos de corte de caché}} en el prefijo de esta solicitud, y qué segmentos se leyeron frente a los que se volvieron a crear.",
     "estimatedTokens": "≈ {count} tokens",
@@ -89,6 +96,11 @@
     "syntheticAgentLoopErrorWithReason": "Error del bucle del agente · {reason}",
     "syntheticYield": "Rendimiento · la compactación no cupo en el siguiente paso",
     "unrecognizedCall": "Llamada no reconocida"
+  },
+  "chatComposer": {
+    "addToChat": "Añadir al chat",
+    "askAssistantPlaceholder": "Pregunta a {assistantName}",
+    "disclaimer": "Vellum usa modelos de IA externos y puede cometer errores"
   },
   "compactionTab": {
     "compactedMessages": "{count} compactados",
