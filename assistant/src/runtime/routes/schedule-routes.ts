@@ -17,7 +17,7 @@ import {
 } from "../../persistence/llm-usage-store.js";
 import { isDeferSchedule } from "../../schedule/defer-provenance.js";
 import { validateScheduleInferenceProfile } from "../../schedule/inference-profile.js";
-import { declarationExistsOnDisk } from "../../schedule/plugin-schedule-declarations.js";
+import { pluginScheduleSourceAvailable } from "../../schedule/plugin-schedule-availability.js";
 import { isPluginSchedulesEnabled } from "../../schedule/plugin-schedules-gate.js";
 import {
   describeRRuleExpression,
@@ -1240,15 +1240,19 @@ async function handleRunScheduleNow(
 
   // A plugin-sourced row runs the plugin's own script or prompt, so run-now is
   // only offered while that plugin is something the runtime would activate.
-  // `declarationExistsOnDisk` is the same probe the enable path uses: it covers
-  // a disabled plugin, an unreadable or invalid manifest, and a declaration
-  // that is simply gone. Turning the feature flag off retires the surface
-  // wholesale and takes the same path. The row can still be armed at this
-  // point, because the reconciler that disarms it runs on its own schedule.
+  // `pluginScheduleSourceAvailable` covers a plugin the daemon never
+  // activated, a disabled plugin, an unreadable or invalid manifest, and a
+  // declaration that is simply gone. Turning the feature flag off retires the
+  // surface wholesale and takes the same path. The row can still be armed at
+  // this point, because the reconciler that disarms it runs on its own
+  // schedule.
+  // Routes are served by the daemon, so the activation half of the probe reads
+  // a live ledger here. Paths that run in worker processes cannot ask that
+  // question and use the on-disk probe alone.
   if (
     schedule.sourceKey !== null &&
     (!isPluginSchedulesEnabled() ||
-      !(await declarationExistsOnDisk(schedule.sourceKey)))
+      !(await pluginScheduleSourceAvailable(schedule.sourceKey)))
   ) {
     throw new BadRequestError(
       "This schedule's plugin is disabled or no longer declares it, so it cannot be run.",
