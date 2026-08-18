@@ -1,8 +1,11 @@
 import { readFile } from "node:fs/promises";
 
 import { getConfig } from "../config/loader.js";
+import {
+  classifyRisk,
+  type RiskClassificationWithMeta,
+} from "../permissions/checker.js";
 import { PermissionPrompter } from "../permissions/prompter.js";
-import { RiskLevel } from "../permissions/types.js";
 import { runInPluginContext } from "../plugins/plugin-execution-context.js";
 import { TokenExpiredError } from "../security/token-manager.js";
 import {
@@ -30,6 +33,7 @@ import { MAX_FILE_SIZE_BYTES } from "./shared/filesystem/size-guard.js";
 import { ToolApprovalHandler } from "./tool-approval-handler.js";
 import { resolveToolInvocationAlias } from "./tool-name-aliases.js";
 import { recordToolCompletion } from "./tool-profiler.js";
+import { RISK_LEVEL_UNCLASSIFIED } from "./tool-types.js";
 import { type ToolContext, type ToolExecutionResult } from "./types.js";
 
 export class ToolExecutor {
@@ -60,7 +64,27 @@ export class ToolExecutor {
   ): Promise<ToolExecutionResult> {
     const startTime = Date.now();
     let decision = "allow";
-    let riskLevel: string = RiskLevel.Low;
+    // The invocation's one classification, taken before the gates so every
+    // audit row this call can produce (gate denial, gate error, grant-consumed
+    // execution, permission decision) records the risk of what the model asked
+    // for, then handed down to `checkPermission`. A classification that does
+    // not complete (aborted, gateway unreachable) is recorded as such rather
+    // than as a level; the permission check still requires one and fails
+    // closed on its own.
+    let classification: RiskClassificationWithMeta | undefined;
+    try {
+      classification = await classifyRisk(
+        name,
+        input,
+        context.workingDir,
+        undefined,
+        undefined,
+        context.signal,
+      );
+    } catch {
+      // Stays undefined; the audit row records RISK_LEVEL_UNCLASSIFIED.
+    }
+    let riskLevel: string = classification?.level ?? RISK_LEVEL_UNCLASSIFIED;
     let permRiskMeta:
       | {
           riskLevel: string;
@@ -106,6 +130,11 @@ export class ToolExecutor {
     // consumed; substitute the parsed value (with `.catch()` recoveries
     // applied) so validation and execution see the same input.
     if (gateResult.parsedInput) {
+      // The permission decision is about the input that runs, so a parse that
+      // reshaped it (a `.catch()` recovery) gets its own classification.
+      if (!Bun.deepEquals(input, gateResult.parsedInput)) {
+        classification = undefined;
+      }
       input = gateResult.parsedInput;
     }
 
@@ -189,6 +218,7 @@ export class ToolExecutor {
           context,
           startTime,
           computePreviewDiff,
+          classification,
         );
 
         riskLevel = permResult.riskLevel;
