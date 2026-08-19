@@ -47,6 +47,8 @@ import {
   EDGE_SWIPE_EASING,
   EDGE_SWIPE_SLIDE_MS,
 } from "@/hooks/edge-swipe-motion";
+import { useSoftKeyboardOpen } from "@/hooks/use-keyboard-open";
+import { useSwipeDownDismissKeyboard } from "@/hooks/use-swipe-down-dismiss-keyboard";
 import { useCommandPaletteStore } from "@/stores/command-palette-store";
 import { useMobileDrawerStore } from "@/stores/mobile-drawer-store";
 
@@ -572,6 +574,19 @@ export function ChatLayout({
       setDrawerPresented(false);
     };
   }, [drawerPresented, setDrawerPresented]);
+
+  // Swipe-down-to-dismiss-keyboard. Armed only while the soft keyboard is up,
+  // so it costs nothing the rest of the time and cannot shadow the drawer
+  // gestures above. It listens on `document` rather than on a container
+  // because the whole surface over the keyboard should answer to it: the
+  // thread, the banners, the composer chrome and the header alike, not just
+  // the one scrollable strip a drag happens to land in.
+  //
+  // Gated on the keyboard alone, not on `useKeyboardOpen()`'s phone-width
+  // variant: an iPad in landscape sits far above the mobile breakpoint and
+  // still raises a soft keyboard. The hook's own coarse-pointer check is what
+  // keeps the gesture off pointer devices.
+  useSwipeDownDismissKeyboard({ enabled: useSoftKeyboardOpen() });
 
   const activeConversationId = useConversationStore.use.activeConversationId();
   const processingConversationIds =

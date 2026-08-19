@@ -1,5 +1,6 @@
 /**
- * Unit tests for `initNativeKeyboard` and `subscribeNativeKeyboardHeight`.
+ * Unit tests for `initNativeKeyboard`, `hideNativeKeyboard` and
+ * `subscribeNativeKeyboardHeight`.
  *
  * These pin the platform gates (including the Android half of `hide()`, which
  * the swipe-down dismiss gesture depends on), the backwards-compat contract
@@ -57,8 +58,11 @@ mock.module("@capacitor/keyboard", () => ({
 // resolves within microtasks instead of a full loader turn.
 await import("@capacitor/keyboard");
 
-const { initNativeKeyboard, subscribeNativeKeyboardHeight } =
-  await import("@/runtime/native-keyboard");
+const {
+  hideNativeKeyboard,
+  initNativeKeyboard,
+  subscribeNativeKeyboardHeight,
+} = await import("@/runtime/native-keyboard");
 
 // The dynamic plugin import and its `.then` chain each queue a microtask, so
 // listener registration lags synchronous test code.
@@ -101,6 +105,36 @@ describe("initNativeKeyboard", () => {
     });
     await initNativeKeyboard();
     expect(setAccessoryBarVisible).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("hideNativeKeyboard", () => {
+  test("never touches the plugin outside a native shell", async () => {
+    await hideNativeKeyboard();
+    expect(hide).not.toHaveBeenCalled();
+  });
+
+  test("hides the keyboard inside the native iOS shell", async () => {
+    mockIsNativeIOS = true;
+    await hideNativeKeyboard();
+    expect(hide).toHaveBeenCalledTimes(1);
+  });
+
+  test("hides the keyboard inside the native Android shell", async () => {
+    // The swipe-down dismiss gesture needs this: an Android WebView commonly
+    // keeps the IME up after a DOM blur, so the plugin call is the way down.
+    mockIsNativeAndroid = true;
+    await hideNativeKeyboard();
+    expect(hide).toHaveBeenCalledTimes(1);
+  });
+
+  test("swallows the rejection Android returns with no focused view", async () => {
+    mockIsNativeAndroid = true;
+    hide.mockImplementationOnce(async () => {
+      throw new Error("Can't close keyboard, not currently focused");
+    });
+    await hideNativeKeyboard();
+    expect(hide).toHaveBeenCalledTimes(1);
   });
 });
 
