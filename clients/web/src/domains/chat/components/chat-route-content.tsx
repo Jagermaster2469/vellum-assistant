@@ -194,7 +194,9 @@ export interface ChatMainPanelProps {
   handleEditQueueTail: () => void;
 
   // Conversation secondary actions (orchestration dependency)
-  handleForkConversation: (throughMessageId: string) => Promise<void>;
+  /** Forks through a message. Omitted unless the viewer passes the
+   *  staff + `fork-from-message` gate, which hides the hover action. */
+  handleForkConversation?: (throughMessageId: string) => Promise<void>;
   /** Opens the "Summarize up to here" confirm dialog for a message. */
   onSummarizeUpToHere?: (messageId: string) => void;
   /** Opens the "Retry" confirm dialog for the latest assistant turn. */
@@ -509,10 +511,13 @@ export function ChatMainPanel({
     [],
   );
 
-  const handleForkConversationCallback = useCallback(
-    (messageId: string) => {
-      void handleForkConversation(messageId);
-    },
+  const handleForkConversationCallback = useMemo(
+    () =>
+      handleForkConversation
+        ? (messageId: string) => {
+            void handleForkConversation(messageId);
+          }
+        : undefined,
     [handleForkConversation],
   );
 
