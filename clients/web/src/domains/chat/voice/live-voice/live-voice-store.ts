@@ -38,7 +38,12 @@ import { createSelectors } from "@/utils/create-selectors";
  * - `idle` — no session (or a finished one cleaned up).
  * - `connecting` — minting a token / opening the socket, before `ready`.
  * - `listening` — mic is capturing and streaming PCM to the server.
- * - `transcribing` — push-to-talk released; waiting on the final transcript.
+ * - `transcribing`: the user's utterance closed; waiting on the final
+ *   transcript. Set by server VAD's `utterance_end` in hands-free and by the
+ *   turn-boundary `ptt_release` frame in manual mode. Distinct from `thinking`
+ *   because it stamps end-of-speech latency and gates the
+ *   `utterance_discarded` return to `listening`, though the two share a label
+ *   (see {@link LIVE_VOICE_STATE_LABELS}).
  * - `thinking` — server is generating the assistant response.
  * - `speaking` — TTS audio is queued/playing.
  * - `ending` — graceful teardown in progress.
@@ -63,12 +68,20 @@ export type LiveVoiceSessionState =
  * streams into the thread transcript like text chat, so surfaces only carry a
  * small label. `idle`/`failed` map to an empty label — hosts unmount their
  * voice UI in those states.
+ *
+ * `transcribing` and `thinking` share one label (JARVIS-1559).
+ * `toVoiceAvatarVisual` collapses both phases to a single visual, so wording
+ * unique to `transcribing` puts two words for one phase on screen at once,
+ * across a window that is usually under a second and that offers the user
+ * nothing to act on. The pairing belongs in this table rather than in
+ * {@link liveVoiceSurfaceLabel}: the session pill and the composer's voice bar
+ * read the table directly, so it is the only layer every surface shares.
  */
 export const LIVE_VOICE_STATE_LABELS: Record<LiveVoiceSessionState, string> = {
   idle: "",
   connecting: "Connecting…",
   listening: "Listening…",
-  transcribing: "Transcribing…",
+  transcribing: "Thinking…",
   thinking: "Thinking…",
   speaking: "Speaking…",
   ending: "Ending…",
