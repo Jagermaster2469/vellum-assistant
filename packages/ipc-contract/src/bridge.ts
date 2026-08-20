@@ -23,6 +23,7 @@ import type {
   CompanionSurfaceState,
   ConnectivityState,
   DeepLink,
+  DictationOverlayHitRegion,
   DictationOverlayMessage,
   DictationOverlayState,
   DictationPartialEvent,
@@ -372,6 +373,13 @@ export interface VellumBridge {
     requestStop(): void;
     onStopRequested(callback: () => void): () => void;
     setInteractive(interactive: boolean): void;
+    /**
+     * Report where the Stop control sits (window-relative CSS pixels), or
+     * null when there is none. Lets main hit-test the cursor itself on
+     * platforms where forwarded mouse moves never reach the click-through
+     * overlay.
+     */
+    setHitRegion(region: DictationOverlayHitRegion | null): void;
   };
   /**
    * The running live-voice session, as the desktop shows it. Two renderers use
