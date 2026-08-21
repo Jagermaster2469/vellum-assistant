@@ -20,6 +20,7 @@ import type {
   BundleScanData,
   CompanionCharacter,
   CompanionContext,
+  CompanionIntroAction,
   CompanionSurfaceState,
   ConnectivityState,
   DeepLink,
@@ -447,6 +448,32 @@ export interface VellumBridge {
      * it back down as part of `onState`.
      */
     setContext(context: CompanionContext): void;
+    /**
+     * Move the one-time introduction on, or end it early.
+     *
+     * `next` walks to the following beat and finishes past the last one;
+     * `dismiss` is the Skip affordance. Either way main is what records that it
+     * has been seen, so the run never comes back.
+     */
+    advanceIntro(action: CompanionIntroAction): void;
+    /**
+     * Open the surface's own menu, at the pointer.
+     *
+     * Built and popped in main, because a menu is a native window: the
+     * renderer knows a right-click happened and nothing else. The items are
+     * the ones the tray carries for the companion, so the two cannot come to
+     * describe the surface differently.
+     */
+    showContextMenu(): void;
+    /**
+     * Open a link from the card in the user's browser.
+     *
+     * The surface's window denies every navigation and every `window.open`, so
+     * an anchor cannot follow itself: the URL is handed to main, which is the
+     * side allowed to open anything. Main validates the scheme, since a URL
+     * arriving over IPC is untrusted whatever drew the anchor.
+     */
+    openLink(url: string): void;
   };
   popout: {
     open(conversationId: string): Promise<void>;
