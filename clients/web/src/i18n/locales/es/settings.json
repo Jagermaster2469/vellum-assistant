@@ -2160,6 +2160,9 @@
     "titleWithName": "Voz de {name}"
   },
   "webFetchCard": {
+    "apiBaseHint": "Déjalo vacío para el valor predeterminado en la nube ({defaultBase}).",
+    "apiBaseLabel": "Base de la API",
+    "apiBasePlaceholder": "https://api.fastcrw.com",
     "apiKeyLabel": "Clave de API",
     "apiKeyPlaceholder": "Introduce tu clave de API",
     "configUpdateFailedToast": "No se pudo actualizar la configuración del asistente. Inténtalo de nuevo.",
@@ -2170,6 +2173,9 @@
     "title": "Obtención web"
   },
   "webSearchCard": {
+    "apiBaseHint": "Déjalo vacío para el valor predeterminado en la nube ({defaultBase}).",
+    "apiBaseLabel": "Base de la API",
+    "apiBasePlaceholder": "https://api.fastcrw.com",
     "apiKeyLabel": "Clave de API",
     "apiKeyPlaceholder": "Introduce tu clave de API",
     "configUpdateFailedToast": "No se pudo actualizar la configuración del asistente. Inténtalo de nuevo.",

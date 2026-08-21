@@ -2160,6 +2160,9 @@
     "titleWithName": "{name}'s Voice"
   },
   "webFetchCard": {
+    "apiBaseHint": "Leave empty for the cloud default ({defaultBase}).",
+    "apiBaseLabel": "API Base",
+    "apiBasePlaceholder": "https://api.fastcrw.com",
     "apiKeyLabel": "API Key",
     "apiKeyPlaceholder": "Enter your API key",
     "configUpdateFailedToast": "Failed to update assistant configuration. Please try again.",
@@ -2170,6 +2173,9 @@
     "title": "Web Fetch"
   },
   "webSearchCard": {
+    "apiBaseHint": "Leave empty for the cloud default ({defaultBase}).",
+    "apiBaseLabel": "API Base",
+    "apiBasePlaceholder": "https://api.fastcrw.com",
     "apiKeyLabel": "API Key",
     "apiKeyPlaceholder": "Enter your API key",
     "configUpdateFailedToast": "Failed to update assistant configuration. Please try again.",
