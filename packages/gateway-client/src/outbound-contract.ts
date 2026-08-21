@@ -183,8 +183,6 @@ export type MessageAudience = z.infer<typeof MessageAudienceSchema>;
 export const ChannelReplyPayloadSchema = z.object({
   chatId: z.string(),
   text: z.string().optional(),
-  /** Pre-formatted Block Kit blocks for Slack delivery. */
-  blocks: z.array(z.custom<KnownBlock>()).optional(),
   assistantId: z.string().optional(),
   attachments: z.array(AttachmentMetadataSchema).optional(),
   approval: ApprovalUIMetadataSchema.optional(),
@@ -194,7 +192,11 @@ export const ChannelReplyPayloadSchema = z.object({
    * loses its audience must not become a public one.
    */
   audience: MessageAudienceSchema.optional(),
-  /** When true, the daemon generates Block Kit blocks from the text before delivery. */
+  /**
+   * Asks the channel to render the text richly rather than as plain text.
+   * Each channel decides what that means, and one that cannot ignores it.
+   * Slack is the only channel acting on it today, where it becomes Block Kit.
+   */
   useBlocks: z.boolean().optional(),
 });
 
