@@ -7,6 +7,7 @@
  */
 import type { KnownBlock } from "@slack/types";
 
+import { audienceForReader } from "../../channels/message-audience.js";
 import type { ChannelId } from "../../channels/types.js";
 import type { TrustContext } from "../../daemon/trust-context-types.js";
 import { editChannelMessage } from "../../messaging/providers/index.js";
@@ -33,18 +34,6 @@ import {
 import { deliverStaleApprovalReply } from "./guardian-approval-reply-helpers.js";
 
 const log = getLogger("runtime-http");
-
-/**
- * Resolve the Slack ephemeral user ID when the source channel is Slack.
- * Returns `undefined` for non-Slack channels so callers can pass the
- * result directly to `ephemeralUserId` without branching.
- */
-function slackEphemeralUserId(
-  sourceChannel: ChannelId,
-  userId: string | undefined,
-): string | undefined {
-  return sourceChannel === "slack" && userId ? userId : undefined;
-}
 
 export interface ApprovalInterceptionParams {
   conversationId: string;
@@ -171,7 +160,11 @@ export async function handleApprovalInterception(
           errorLogMessage:
             "Failed to deliver guardian-pending notice to non-guardian actor (pre-row guard)",
           errorLogContext: { conversationId },
-          ephemeralUserId: slackEphemeralUserId(sourceChannel, actorExternalId),
+          audience: audienceForReader(
+            sourceChannel,
+            conversationExternalId,
+            actorExternalId,
+          ),
         });
         return { handled: true, type: "assistant_turn" };
       }
@@ -206,8 +199,9 @@ export async function handleApprovalInterception(
         "Blocking guardian-class approval decision: acting principal missing or does not match the bound guardian principal",
       );
       if (replyCallbackUrl) {
-        const ephemeralUser = slackEphemeralUserId(
+        const rejectionAudience = audienceForReader(
           sourceChannel,
+          conversationExternalId,
           actorExternalId,
         );
         try {
@@ -215,7 +209,10 @@ export async function handleApprovalInterception(
             chatId: conversationExternalId,
             text: "Sorry, I couldn't process that. Please try again.",
             assistantId,
-            ...(ephemeralUser ? { ephemeral: true, user: ephemeralUser } : {}),
+            // Stated rather than spread. A rejection that loses its
+            // audience becomes a public one, so the key is always present
+            // and the compiler checks it.
+            audience: rejectionAudience,
           });
         } catch (err) {
           log.error(
@@ -362,7 +359,11 @@ export async function handleApprovalInterception(
       toolName: pending.length > 0 ? pending[0].toolName : undefined,
     },
     errorLogContext: { conversationId },
-    ephemeralUserId: slackEphemeralUserId(sourceChannel, actorExternalId),
+    audience: audienceForReader(
+      sourceChannel,
+      conversationExternalId,
+      actorExternalId,
+    ),
   });
 
   return { handled: true, type: "assistant_turn" };
