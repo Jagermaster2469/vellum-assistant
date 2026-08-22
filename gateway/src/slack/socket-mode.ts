@@ -19,6 +19,7 @@ import {
   type SlackHistoryMessage,
 } from "./slack-web.js";
 import { isSlackDmChannel, isSlackMpimChannel } from "./channel.js";
+import type { ChannelConnectionHealth } from "../channels/types.js";
 import { parseSlackEnvelope } from "./envelope.js";
 import type { SlackEnvelopePayload, SlackInboundEvent } from "./envelope.js";
 import { classifySlackEvent } from "./classify-event.js";
@@ -362,6 +363,28 @@ export class SlackSocketModeClient {
         this.forceReconnect("liveness probe failed", "backoff");
       },
     });
+  }
+
+  /**
+   * Whether this client currently holds an open, live Socket Mode connection.
+   *
+   * `connected` reads the socket's own `readyState`, which on its own is a
+   * claim the transport cannot back up: a half-open socket reports `OPEN`
+   * indefinitely. It is trustworthy here only because the liveness watchdog
+   * bounds how long a socket can claim to be open while dead, to one probe
+   * interval plus one deadline. A change that removes that watchdog makes this
+   * getter unreliable.
+   *
+   * `lastLivenessAt` is the corroborating evidence, and is deliberately not
+   * part of the `connected` verdict: the first probe is a full interval after
+   * `open`, so every healthy reconnect has a window where no pong has landed
+   * yet. Gating on it would report a fresh connection as broken.
+   */
+  getConnectionHealth(): ChannelConnectionHealth {
+    return {
+      connected: this.ws?.readyState === WebSocket.OPEN,
+      lastLivenessAt: this.liveness.lastPongAt,
+    };
   }
 
   /**
