@@ -1255,8 +1255,6 @@
   },
   "paymentMethodRow": {
     "endingIn": "Ending in {last4}",
-    "remove": "Remove",
-    "removing": "Removing…",
     "savedCard": "Saved card",
     "updateCard": "Update Card"
   },
@@ -1265,12 +1263,6 @@
     "empty": "No payment method on file. Add one to use auto-reload.",
     "loadError": "Failed to load payment methods.",
     "loading": "Loading…",
-    "removeConfirmCancel": "Keep card",
-    "removeConfirmConfirm": "Remove",
-    "removeConfirmMessage": "Removing your card will turn off auto-reload.",
-    "removeConfirmPending": "Removing…",
-    "removeConfirmTitle": "Remove payment method?",
-    "removeError": "Failed to remove the payment method. Please try again.",
     "subtitle": "Payment methods linked to your account.",
     "title": "Payment Methods"
   },
