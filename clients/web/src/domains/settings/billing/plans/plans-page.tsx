@@ -30,9 +30,7 @@ import { PRICING_DOCS_URL } from "@/domains/settings/billing/plans/docs-links";
 import { FreeDowngradeConfirmModal } from "@/domains/settings/billing/plans/free-downgrade-confirm-modal";
 import { PackageSwitchConfirmModal } from "@/domains/settings/billing/plans/package-switch-confirm-modal";
 import { PlanColumnCard } from "@/domains/settings/billing/plans/plan-column-card";
-import {
-  getPlanTierCopy,
-} from "@/domains/settings/billing/plans/plans-copy";
+import { getPlanTierCopy } from "@/domains/settings/billing/plans/plans-copy";
 import { Trans, useTranslation } from "@/i18n";
 import {
   BillingOnboardingModal,
@@ -71,6 +69,7 @@ import type {
   SubscriptionUpgradeRequestRequest,
 } from "@/generated/api/types.gen";
 import { useIsOrgReady } from "@/hooks/use-is-org-ready";
+import { useObscureCredits } from "@/hooks/use-obscure-credits-flag";
 import {
   useActiveAssistantIsPlatformHosted,
   useActiveAssistantLifecycleIsLoading,
@@ -126,19 +125,27 @@ function packageFeatures(
   pkg: ProPackage,
   extra: readonly string[],
   translate: SettingsTranslate,
+  obscureCredits: boolean,
 ): string[] {
   const credits = pkg.credits_usd ?? FREE_CREDITS_USD;
   return [
     machineComputerLabel(pkg, translate),
     translate("plansPage.featureStorage", { gib: pkg.storage_gib }),
-    // The catalog's `usage_label` ("Mighty Usage") matches the bundle's
-    // Stripe product and thus the invoice; the amount wording covers a
-    // package with no usage label.
-    pkg.usage_label != null
-      ? translate("plansPage.featureUsageIncluded", { label: pkg.usage_label })
-      : translate("plansPage.featureCreditsIncluded", {
-          amount: formatDollars(credits * 100),
-        }),
+    // Under `obscure-credits` the bundle row never names a credit amount: it
+    // reads as the package's own usage allowance, derived from the package
+    // name the way the plan card's chip is, so it holds even when the catalog
+    // carries no `usage_label`. Otherwise the catalog's `usage_label`
+    // ("Mighty Usage") matches the bundle's Stripe product and thus the
+    // invoice; the amount wording covers a package with no usage label.
+    obscureCredits
+      ? translate("plansPage.featureUsage", { name: pkg.name })
+      : pkg.usage_label != null
+        ? translate("plansPage.featureUsageIncluded", {
+            label: pkg.usage_label,
+          })
+        : translate("plansPage.featureCreditsIncluded", {
+            amount: formatDollars(credits * 100),
+          }),
     ...extra,
   ];
 }
@@ -165,6 +172,7 @@ function PlansPageContent() {
   const [searchParams, setSearchParams] = useSearchParams();
   const queryClient = useQueryClient();
   const electron = isElectron();
+  const obscureCredits = useObscureCredits();
 
   const platformGate = usePlatformGate({ platformHostedOnly: true });
   const isPlatformHosted = useActiveAssistantIsPlatformHosted();
@@ -399,10 +407,7 @@ function PlansPageContent() {
       }
     } catch (error) {
       toast.error(
-        extractMutationError(
-          error,
-          t("plansPage.checkoutFailedToast"),
-        ),
+        extractMutationError(error, t("plansPage.checkoutFailedToast")),
       );
     } finally {
       setPending(false);
@@ -805,7 +810,9 @@ function PlansPageContent() {
             name="Base"
             tagline={freeCopy?.tagline ?? ""}
             priceLabel={t("plansPage.freePriceLabel")}
-            priceCaption={freeCopy?.priceCaption ?? t("plansPage.foreverCaption")}
+            priceCaption={
+              freeCopy?.priceCaption ?? t("plansPage.foreverCaption")
+            }
             ctaLabel={
               freeRelation === "downgrade"
                 ? t("plansPage.downgradeTo", { name: "Base" })
@@ -836,7 +843,12 @@ function PlansPageContent() {
                     ? t("plansPage.downgradeTo", { name: pkg.name })
                     : (copy?.cta ?? pkg.name)
                 }
-                features={packageFeatures(pkg, copy?.extraFeatures ?? [], t)}
+                features={packageFeatures(
+                  pkg,
+                  copy?.extraFeatures ?? [],
+                  t,
+                  obscureCredits,
+                )}
                 recommended={copy?.recommended}
                 tone={copy?.recommended ? "light" : "dark"}
                 isCurrent={currentTierKey === pkg.key}
