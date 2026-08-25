@@ -20,6 +20,7 @@ import type {
 } from "@/generated/daemon/types.gen";
 import { resolveSupportsBatchedQuestionSubmit } from "@/lib/backwards-compat/batched-question-submit";
 import { assertHasResponse, extractErrorMessage } from "@/utils/api-errors";
+import { isTransientNetworkError } from "@/utils/is-transient-network-error";
 
 /**
  * Subset of the pending-interactions response returned for a single
@@ -93,9 +94,17 @@ export async function listConversationIdsWithPendingInteractions(
   return keys;
 }
 
+/**
+ * `transient` marks a failure the transport produced rather than the assistant:
+ * offline, a dropped connection, an interrupted fetch. The helpers below catch
+ * those and flatten them into an ordinary `ok: false`, which loses the original
+ * `TypeError` that `isTransientNetworkError` keys on, so the answer is recorded
+ * here while that object still exists. Callers use it to skip the error report
+ * a connectivity blip does not deserve.
+ */
 export type SubmitSecretResponseResult =
   | { ok: true }
-  | { ok: false; status: number; error: string };
+  | { ok: false; status: number; error: string; transient: boolean };
 
 export async function submitSecretResponse(
   assistantId: string,
@@ -112,7 +121,12 @@ export async function submitSecretResponse(
     assertHasResponse(response, error, "Failed to submit secret response");
     if (!response.ok) {
       const msg = extractErrorMessage(error, response);
-      return { ok: false, status: response.status, error: msg };
+      return {
+        ok: false,
+        status: response.status,
+        error: msg,
+        transient: false,
+      };
     }
     return { ok: true };
   } catch (err) {
@@ -120,6 +134,7 @@ export async function submitSecretResponse(
       ok: false,
       status: 500,
       error: err instanceof Error ? err.message : "Something went wrong.",
+      transient: isTransientNetworkError(err),
     };
   }
 }
@@ -142,7 +157,12 @@ export async function submitSecretCancel(
     assertHasResponse(response, error, "Failed to cancel secret prompt");
     if (!response.ok) {
       const msg = extractErrorMessage(error, response);
-      return { ok: false, status: response.status, error: msg };
+      return {
+        ok: false,
+        status: response.status,
+        error: msg,
+        transient: false,
+      };
     }
     return { ok: true };
   } catch (err) {
@@ -150,6 +170,7 @@ export async function submitSecretCancel(
       ok: false,
       status: 500,
       error: err instanceof Error ? err.message : "Something went wrong.",
+      transient: isTransientNetworkError(err),
     };
   }
 }
@@ -169,7 +190,12 @@ export async function submitConfirmation(
     assertHasResponse(response, error, "Failed to submit confirmation");
     if (!response.ok) {
       const msg = extractErrorMessage(error, response);
-      return { ok: false, status: response.status, error: msg };
+      return {
+        ok: false,
+        status: response.status,
+        error: msg,
+        transient: false,
+      };
     }
     return { ok: true };
   } catch (err) {
@@ -177,6 +203,7 @@ export async function submitConfirmation(
       ok: false,
       status: 500,
       error: err instanceof Error ? err.message : "Something went wrong.",
+      transient: isTransientNetworkError(err),
     };
   }
 }
@@ -198,7 +225,12 @@ export async function submitContactPrompt(
     assertHasResponse(response, error, "Failed to submit contact prompt");
     if (!response.ok) {
       const msg = extractErrorMessage(error, response);
-      return { ok: false, status: response.status, error: msg };
+      return {
+        ok: false,
+        status: response.status,
+        error: msg,
+        transient: false,
+      };
     }
     return { ok: true };
   } catch (err) {
@@ -206,6 +238,7 @@ export async function submitContactPrompt(
       ok: false,
       status: 500,
       error: err instanceof Error ? err.message : "Something went wrong.",
+      transient: isTransientNetworkError(err),
     };
   }
 }
@@ -282,7 +315,12 @@ export async function submitQuestionResponse(
     );
     if (!httpResponse.ok) {
       const msg = extractErrorMessage(error, httpResponse);
-      return { ok: false, status: httpResponse.status, error: msg };
+      return {
+        ok: false,
+        status: httpResponse.status,
+        error: msg,
+        transient: false,
+      };
     }
     return { ok: true };
   } catch (err) {
@@ -290,6 +328,7 @@ export async function submitQuestionResponse(
       ok: false,
       status: 500,
       error: err instanceof Error ? err.message : "Something went wrong.",
+      transient: isTransientNetworkError(err),
     };
   }
 }

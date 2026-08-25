@@ -134,6 +134,7 @@ describe("handleQuestionResponse: stale (404) interaction", () => {
       ok: false,
       status: 404,
       error: "No pending question interaction found for this requestId",
+      transient: false,
     };
     seedPendingQuestion("q-stale");
 
@@ -149,11 +150,39 @@ describe("handleQuestionResponse: stale (404) interaction", () => {
     expect(useChatSessionStore.getState().error).toBeNull();
   });
 
+  it("tells the user about a connectivity failure without reporting it", async () => {
+    // The transport, not the assistant: `submitQuestionResponse` catches the
+    // browser's `TypeError` and flattens it, so `transient` is the only thing
+    // left that distinguishes a dropped connection from a server fault. Wrapped
+    // in a fresh Error it would clear `isTransientNetworkError`'s instanceof
+    // check and file every offline blip as an application defect.
+    submitQuestionResult = {
+      ok: false,
+      status: 500,
+      error: "Failed to fetch",
+      transient: true,
+    };
+    seedPendingQuestion("q-offline");
+
+    await handleQuestionResponse([
+      { questionId: "q1", kind: "option", optionId: "alice_work" },
+    ]);
+
+    expect(useChatSessionStore.getState().error?.message).toBe(
+      "Failed to submit response. Please try again.",
+    );
+    expect(capturedErrors).toEqual([]);
+    expect(useInteractionStore.getState().pendingQuestion?.requestId).toBe(
+      "q-offline",
+    );
+  });
+
   it("still surfaces a non-404 failure", async () => {
     submitQuestionResult = {
       ok: false,
       status: 500,
       error: "Internal error",
+      transient: false,
     };
     seedPendingQuestion("q-broken");
 
@@ -170,7 +199,7 @@ describe("handleQuestionResponse: stale (404) interaction", () => {
     expect(capturedErrors).toEqual([
       {
         context: "submit_question_response",
-        message: "question-response failed: Internal error",
+        message: "submit_question_response: Internal error",
       },
     ]);
     expect(useInteractionStore.getState().pendingQuestion?.requestId).toBe(
@@ -180,7 +209,12 @@ describe("handleQuestionResponse: stale (404) interaction", () => {
   });
 
   it("leaves a newer prompt standing when a stale answer 404s", async () => {
-    submitQuestionResult = { ok: false, status: 404, error: "gone" };
+    submitQuestionResult = {
+      ok: false,
+      status: 404,
+      error: "gone",
+      transient: false,
+    };
     seedPendingQuestion("q-stale");
     // A fresh prompt arrives while the answer is in flight, which is the only
     // way the store can hold a different prompt by the time the 404 lands:
@@ -249,6 +283,7 @@ describe("handleQuestionResponse: a late completion must not rewrite newer state
       ok: false,
       status: 404,
       error: "No pending question interaction found for this requestId",
+      transient: false,
     });
     const { answerA, answerB } = await startOverlappingRequests();
 
@@ -282,6 +317,7 @@ describe("handleQuestionResponse: a late completion must not rewrite newer state
       ok: false,
       status: 500,
       error: "A exploded",
+      transient: false,
     });
     const { answerA, answerB } = await startOverlappingRequests();
 
@@ -317,11 +353,17 @@ describe("handleQuestionResponse: a late completion must not rewrite newer state
 
   it("B's error survives A's late completion", async () => {
     // B fails for real while A is still open; A must not erase the banner.
-    resultByRequestId.set("q-a", { ok: false, status: 404, error: "gone" });
+    resultByRequestId.set("q-a", {
+      ok: false,
+      status: 404,
+      error: "gone",
+      transient: false,
+    });
     resultByRequestId.set("q-b", {
       ok: false,
       status: 500,
       error: "Internal error",
+      transient: false,
     });
     const { answerA, answerB } = await startOverlappingRequests();
 
@@ -342,7 +384,12 @@ describe("handleQuestionResponse: a late completion must not rewrite newer state
   it("still cleans up its own state when no newer prompt took over", async () => {
     // The guard must not strand the submitting flag in the ordinary case where
     // the card was retired by `interaction_resolved` mid-flight.
-    resultByRequestId.set("q-a", { ok: false, status: 500, error: "boom" });
+    resultByRequestId.set("q-a", {
+      ok: false,
+      status: 500,
+      error: "boom",
+      transient: false,
+    });
     holdRequest("q-a");
     seedPendingQuestion("q-a");
     const answerA = handleQuestionResponse([
@@ -366,6 +413,7 @@ describe("handleDismissPendingQuestion: stale (404) interaction", () => {
       ok: false,
       status: 404,
       error: "No pending question interaction found for this requestId",
+      transient: false,
     };
     seedPendingQuestion("q-stale");
 
@@ -379,7 +427,12 @@ describe("handleDismissPendingQuestion: stale (404) interaction", () => {
   });
 
   it("still reports a non-404 close failure", async () => {
-    submitQuestionResult = { ok: false, status: 500, error: "boom" };
+    submitQuestionResult = {
+      ok: false,
+      status: 500,
+      error: "boom",
+      transient: false,
+    };
     seedPendingQuestion("q-broken");
 
     handleDismissPendingQuestion();
