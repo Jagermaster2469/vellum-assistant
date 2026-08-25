@@ -136,6 +136,13 @@ const HubspotOAuthServiceSchema = BaseServiceSchema.extend({
   mode: ServiceModeSchema.default("your-own"),
 });
 
+export const EventbriteOAuthServiceSchema = BaseServiceSchema.extend({
+  mode: ServiceModeSchema.default("your-own"),
+});
+export type EventbriteOAuthService = z.infer<
+  typeof EventbriteOAuthServiceSchema
+>;
+
 const CalendlyOAuthServiceSchema = BaseServiceSchema.extend({
   mode: ServiceModeSchema.default("your-own"),
 });
@@ -187,6 +194,9 @@ export const ServicesSchema = z.object({
   ),
   "hubspot-oauth": HubspotOAuthServiceSchema.default(
     HubspotOAuthServiceSchema.parse({}),
+  ),
+  "eventbrite-oauth": EventbriteOAuthServiceSchema.default(
+    EventbriteOAuthServiceSchema.parse({}),
   ),
   "calendly-oauth": CalendlyOAuthServiceSchema.default(
     CalendlyOAuthServiceSchema.parse({}),
