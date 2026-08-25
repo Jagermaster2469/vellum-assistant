@@ -6,6 +6,7 @@
  * submit/dismiss lifecycle for multi-field question prompts.
  */
 
+import { t } from "@/i18n";
 import { captureError } from "@/lib/sentry/capture-error";
 
 import { useChatSessionStore } from "@/domains/chat/chat-session-store";
@@ -100,9 +101,18 @@ export async function handleQuestionResponse(
         clearStaleQuestion(snapshot.requestId);
         return;
       }
-      // A retryable failure, so the card stays and the user is told, provided
-      // the prompt they are looking at is still this one.
-      reportSubmissionFailure("question", snapshot.requestId, result.error);
+      // The assistant's own message describes a body this client built, so it
+      // goes to Sentry rather than in front of the user, who never chose the
+      // payload and cannot correct it.
+      captureError(new Error(`question-response failed: ${result.error}`), {
+        context: "submit_question_response",
+        extra: { status: result.status },
+      });
+      reportSubmissionFailure(
+        "question",
+        snapshot.requestId,
+        t("chat:questionActions.submitFailed"),
+      );
       useInteractionStore
         .getState()
         .releaseSubmission("question", snapshot.requestId);
@@ -124,7 +134,7 @@ export async function handleQuestionResponse(
     reportSubmissionFailure(
       "question",
       snapshot.requestId,
-      "Failed to submit response. Please try again.",
+      t("chat:questionActions.submitFailed"),
     );
     useInteractionStore
       .getState()
