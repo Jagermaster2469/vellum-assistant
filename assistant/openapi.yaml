@@ -31220,6 +31220,16 @@ paths:
                           enum:
                             - manual
                             - auto
+                        modelFamilies:
+                          type: array
+                          items:
+                            type: string
+                        baseModelFamily:
+                          type: string
+                        turnDetectionLanguages:
+                          type: array
+                          items:
+                            type: string
                         credentialsGuide:
                           type: string
                       required:
