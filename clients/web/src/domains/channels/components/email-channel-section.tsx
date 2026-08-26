@@ -27,12 +27,12 @@ import {
 } from "@/utils/local-settings-keys";
 import type { EmailByoProvider } from "@/lib/provider-catalogs";
 import { EMAIL_BYO_PROVIDERS } from "@/lib/provider-catalogs";
-import { parseServiceMode } from "@/domains/settings/ai/utils";
+import { parseServiceMode } from "@/domains/channels/service-mode";
 import type { ServiceMode } from "@/generated/daemon/types.gen";
-import { EmailManagedContent } from "@/domains/settings/ai/email-managed-content";
+import { EmailManagedContent } from "@/domains/channels/components/email-managed-content";
 
-export function EmailServiceCard() {
-  const { t } = useTranslation("settings");
+export function EmailChannelSection() {
+  const { t } = useTranslation("channels");
   const assistantId = useActiveAssistantId();
 
   // assistantHandle is platform-only; used to pre-fill the email subdomain.
@@ -112,7 +112,7 @@ export function EmailServiceCard() {
 
   const handleSaveMode = useCallback(() => {
     setLocalSetting(LS_EMAIL_BYO_PROVIDER, byoProviderId);
-    toast.success(t("emailServiceCard.saveSuccessToast"));
+    toast.success(t("emailChannelSection.saveSuccessToast"));
   }, [byoProviderId, t]);
 
   // -- Render ----------------------------------------------------------------
@@ -129,8 +129,8 @@ export function EmailServiceCard() {
       <div className="flex flex-col gap-1">
         <span>
           <Trans
-            i18nKey="emailServiceCard.setupInstructions"
-            ns="settings"
+            i18nKey="emailChannelSection.setupInstructions"
+            ns="channels"
             values={{
               providerName: selectedByoProvider.displayName,
               setupSkill: selectedByoProvider.setupSkill,
@@ -148,7 +148,7 @@ export function EmailServiceCard() {
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1 text-[var(--system-positive-strong)] underline hover:opacity-80"
         >
-          {t("emailServiceCard.openProvider", {
+          {t("emailChannelSection.openProvider", {
             providerName: selectedByoProvider.displayName,
           })}
           <ExternalLink className="h-3 w-3" />
@@ -161,7 +161,7 @@ export function EmailServiceCard() {
     <div className="space-y-4">
       <div className="space-y-1">
         <label className="block text-body-small-default text-[var(--content-tertiary)]">
-          {t("emailServiceCard.providerLabel")}
+          {t("emailChannelSection.providerLabel")}
         </label>
         <Select
           value={byoProviderId}
@@ -183,8 +183,8 @@ export function EmailServiceCard() {
             <CircleCheck className="h-4 w-4 shrink-0 text-[var(--system-positive-strong)]" />
             <span>
               <Trans
-                i18nKey="emailServiceCard.apiKeyConfigured"
-                ns="settings"
+                i18nKey="emailChannelSection.apiKeyConfigured"
+                ns="channels"
                 values={{
                   providerName: selectedByoProvider.displayName,
                   setupSkill: selectedByoProvider.setupSkill,
@@ -203,7 +203,7 @@ export function EmailServiceCard() {
             rel="noopener noreferrer"
             className="inline-flex items-center gap-1 text-body-small-default text-[var(--system-positive-strong)] underline hover:opacity-80"
           >
-            {t("emailServiceCard.openProvider", {
+            {t("emailChannelSection.openProvider", {
               providerName: selectedByoProvider.displayName,
             })}
             <ExternalLink className="h-3 w-3" />
@@ -223,8 +223,8 @@ export function EmailServiceCard() {
     return (
       <ByoServiceCard
         id="email"
-        title={t("emailServiceCard.title")}
-        subtitle={t("emailServiceCard.subtitle")}
+        title={t("emailChannelSection.title")}
+        subtitle={t("emailChannelSection.subtitle")}
       >
         {yourOwnContent}
       </ByoServiceCard>
@@ -234,8 +234,8 @@ export function EmailServiceCard() {
   return (
     <ServiceCard
       id="email"
-      title={t("emailServiceCard.title")}
-      subtitle={t("emailServiceCard.subtitle")}
+      title={t("emailChannelSection.title")}
+      subtitle={t("emailChannelSection.subtitle")}
       mode={mode}
       onModeChange={handleModeChange}
     >
@@ -243,12 +243,12 @@ export function EmailServiceCard() {
         <div className="space-y-4">
           {platformGate === "disabled" ? (
             <PlatformLoginNotice>
-              {t("emailServiceCard.platformLoginNotice")}
+              {t("emailChannelSection.platformLoginNotice")}
             </PlatformLoginNotice>
           ) : managedAssistantId === null ? (
             <div className="flex items-center gap-2 text-body-small-default text-[var(--content-tertiary)]">
               <Loader2 className="h-4 w-4 animate-spin" />
-              {t("emailServiceCard.connecting")}
+              {t("emailChannelSection.connecting")}
             </div>
           ) : (
             <EmailManagedContent

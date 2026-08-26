@@ -4,7 +4,7 @@ import { useNavigate, useSearchParams } from "react-router";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { DomainField } from "@/domains/settings/components/domain-field";
+import { DomainField } from "@/domains/channels/components/domain-field";
 import {
   assistantsDomainsCreateMutation,
   assistantsDomainsDestroyMutation,
@@ -46,7 +46,7 @@ export function EmailManagedContent({
   assistantHandle,
   emailRootDomain,
 }: EmailManagedContentProps) {
-  const { t } = useTranslation("settings");
+  const { t } = useTranslation("channels");
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -381,7 +381,7 @@ export function EmailManagedContent({
           message={
             <Trans
               i18nKey="emailManagedContent.setSubdomainConfirmMessage"
-              ns="settings"
+              ns="channels"
               values={{
                 subdomain:
                   subdomainDraft.trim().toLowerCase() ||
@@ -431,7 +431,7 @@ export function EmailManagedContent({
             message={
               <Trans
                 i18nKey="emailManagedContent.releaseDomainConfirmMessage"
-                ns="settings"
+                ns="channels"
                 values={{
                   domain: `${domain.subdomain}.${emailRootDomain}`,
                 }}
@@ -521,7 +521,7 @@ export function EmailManagedContent({
           message={
             <Trans
               i18nKey="emailManagedContent.removeEmailConfirmMessage"
-              ns="settings"
+              ns="channels"
               values={{ address: address.address }}
               components={{
                 code: <code className={CONFIRM_CODE_CLASS} />,
