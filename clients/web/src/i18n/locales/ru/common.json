@@ -88,6 +88,16 @@
   "managedServicesBanner": {
     "body": "Управляемые сервисы тарифицируются и списываются с баланса аккаунта Vellum. <link>Смотреть цены</link>"
   },
+  "nativeAppBanner": {
+    "bannerAria": "Скачать приложение {appName}",
+    "bannerAriaGeneric": "Скачать приложение Vellum",
+    "download": "Скачать",
+    "downloadAppAria": "Скачать приложение {appName}",
+    "downloadAppAriaGeneric": "Скачать приложение Vellum",
+    "subtitle": "Push-уведомления · биометрический вход · тактильная отдача",
+    "title": "Приложение {appName}",
+    "titleGeneric": "Приложение Vellum"
+  },
   "notFound": {
     "badge": "Ошибка 404",
     "title": "Страница не найдена",
