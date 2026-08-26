@@ -189,6 +189,7 @@ export async function admitInbound(
     messageContent: event.message.content,
     actorExternalUserId: event.actor.actorExternalId,
     actorChatId: event.message.conversationExternalId,
+    isDirectMessage: event.source.isDirectMessage,
     actorDisplayName: event.actor.displayName,
     actorUsername: event.actor.username,
     replyCallbackUrl: options?.replyCallbackUrl,
