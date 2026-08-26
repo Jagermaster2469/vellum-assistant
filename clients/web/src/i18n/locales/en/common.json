@@ -107,6 +107,9 @@
     "alt": "Assistant avatar",
     "fallbackLetter": "V"
   },
+  "chooserAvatarChip": {
+    "alt": "Assistant avatar"
+  },
   "collapsibleNavSection": {
     "actionsTitle": "{title} actions"
   },
