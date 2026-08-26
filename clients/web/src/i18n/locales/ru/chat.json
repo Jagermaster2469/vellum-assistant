@@ -562,6 +562,7 @@
   "preferencesUsagePanel": {
     "addCreditsAriaLabel": "Добавить кредиты",
     "exhausted": "Добавление кредитов для продолжения.",
+    "extraCredits": "Используются дополнительные кредиты",
     "pctUsed": "использовано {pct}%",
     "settingsAriaLabel": "Настройки использования и оплаты",
     "title": "Использование"

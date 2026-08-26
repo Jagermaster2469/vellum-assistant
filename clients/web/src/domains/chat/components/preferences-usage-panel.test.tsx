@@ -25,6 +25,8 @@ mock.module("@/generated/api/sdk.gen", () => ({
 
 let billingEnabled = true;
 let creditsExhausted = false;
+/** The raw wallet balance, which BYOK suppression never touches. */
+let effectiveBalance: string | null = null;
 let availableUsageBalance: string | null = null;
 let totalUsageBalance: string | null = null;
 /** What the panel asked the wallet status to classify against. */
@@ -39,12 +41,21 @@ mock.module("@/hooks/use-billing-balance-status", () => ({
       dailyLimitSnoozed: false,
       dailyLimit: null,
       dailySpend: null,
-      balance: null,
+      balance: effectiveBalance,
       availableUsageBalance,
       totalUsageBalance,
       enabled: billingEnabled,
     };
   },
+}));
+
+// The real BYOK gate classifies through five daemon queries and the
+// resolved-assistants store, none of which these tests stand up; what the
+// hook owns is only how the verdict gates the extra-credits claim.
+let byokRoute = false;
+mock.module("@/hooks/use-byok-credit-banner-gate", () => ({
+  useSuppressCreditBannersForByok: (candidate: boolean) =>
+    candidate && byokRoute,
 }));
 
 const { PreferencesUsagePanel } = await import("./preferences-usage-panel");
@@ -112,8 +123,10 @@ beforeEach(() => {
   subscription = proSubscription();
   billingEnabled = true;
   creditsExhausted = false;
+  effectiveBalance = null;
   availableUsageBalance = null;
   totalUsageBalance = null;
+  byokRoute = false;
   balanceStatusOpts = undefined;
   setObscureCredits(true);
 });
@@ -209,6 +222,7 @@ describe("PreferencesUsagePanel", () => {
     subscription = { ...proSubscription(), plan_id: "base", package: null };
     totalUsageBalance = "5.00";
     availableUsageBalance = "0.00";
+    effectiveBalance = "0.00";
     creditsExhausted = true;
     const { findByTestId, getByText } = renderPanel();
 
@@ -217,16 +231,19 @@ describe("PreferencesUsagePanel", () => {
     expect(getByText("Add credits to continue.")).toBeTruthy();
   });
 
-  test("a used-up grant with purchased credits stays red without a strip", async () => {
+  test("a used-up grant with purchased credits names the extra credits", async () => {
     // The grant is gone, but bought credits still cover the next turn, so the
-    // reading is negative and nothing is being offered.
+    // panel says what it is drawing on and offers nothing.
     subscription = { ...proSubscription(), plan_id: "base", package: null };
     totalUsageBalance = "5.00";
     availableUsageBalance = "0.00";
-    const { findByTestId, queryByText, queryByTestId } = renderPanel();
+    effectiveBalance = "12.00";
+    const { findByTestId, getByText, queryByText, queryByTestId } =
+      renderPanel();
 
     const panel = await findByTestId("preferences-usage");
-    expect(panel.textContent).toContain("100% used");
+    expect(getByText("Now using extra usage credits")).toBeTruthy();
+    expect(panel.textContent).not.toContain("100% used");
     expect(queryByText("Add credits to continue.")).toBeNull();
     expect(queryByTestId("preferences-usage-add-credits")).toBeNull();
   });
@@ -244,12 +261,17 @@ describe("PreferencesUsagePanel", () => {
   test("a spent bundle with an empty wallet raises the strip", async () => {
     totalUsageBalance = "25.00";
     availableUsageBalance = "0.00";
+    effectiveBalance = "0.00";
     creditsExhausted = true;
     const onAddCredits = mock(() => {});
-    const { findByTestId, getByText } = renderPanel({ onAddCredits });
+    const { findByTestId, getByText, queryByText } = renderPanel({
+      onAddCredits,
+    });
 
     const panel = await findByTestId("preferences-usage");
+    // Exhausted keeps the red reading: there are no extra credits to name.
     expect(panel.textContent).toContain("100% used");
+    expect(queryByText("Now using extra usage credits")).toBeNull();
     expect(getByText("Add credits to continue.")).toBeTruthy();
     expect(
       panel
@@ -264,6 +286,7 @@ describe("PreferencesUsagePanel", () => {
   test("without a handler the strip states its case and offers nothing", async () => {
     totalUsageBalance = "25.00";
     availableUsageBalance = "0.00";
+    effectiveBalance = "0.00";
     creditsExhausted = true;
     const { findByTestId, getByText, queryByTestId } = renderPanel({
       withoutAddCredits: true,
@@ -275,26 +298,75 @@ describe("PreferencesUsagePanel", () => {
     expect(queryByTestId("preferences-usage-add-credits")).toBeNull();
   });
 
-  test("a spent bundle turns negative with credits still in hand", async () => {
+  test("a spent bundle swaps the bar for the extra-credits line", async () => {
     totalUsageBalance = "25.00";
     availableUsageBalance = "0.00";
+    effectiveBalance = "18.00";
     const { findByTestId, getByText, queryByTestId, queryByText } =
       renderPanel();
 
     const panel = await findByTestId("preferences-usage");
+    // Amber, not red: nothing has gone wrong yet, the wallet behind the
+    // grants still has something to draw on, so the line names it while the
+    // percentage, the bar, and the strip all stay away.
+    expect(getByText("Now using extra usage credits").className).toContain(
+      "--system-mid-strong",
+    );
+    expect(panel.textContent).not.toContain("100% used");
+    expect(panel.querySelector('[data-slot="progress-bar-fill"]')).toBeNull();
+    expect(queryByText("Add credits to continue.")).toBeNull();
+    expect(queryByTestId("preferences-usage-add-credits")).toBeNull();
+  });
+
+  test("a BYOK route with an empty wallet keeps the red reading", async () => {
+    // The BYOK gate holds `isExhausted` down so the credit wall stays away,
+    // but the wallet is empty: the next turn runs on the user's own key, so
+    // nothing may claim extra credits are being spent.
+    totalUsageBalance = "25.00";
+    availableUsageBalance = "0.00";
+    effectiveBalance = "0.00";
+    const { findByTestId, queryByText, queryByTestId } = renderPanel();
+
+    const panel = await findByTestId("preferences-usage");
     expect(panel.textContent).toContain("100% used");
-    // Red bar and red percentage, but nothing has gone wrong yet: the wallet
-    // behind the bundle still has something to draw on, so no strip.
+    expect(queryByText("Now using extra usage credits")).toBeNull();
     expect(
       panel
         .querySelector('[data-slot="progress-bar-fill"]')
         ?.getAttribute("style"),
     ).toContain("--system-negative-strong");
-    expect(getByText("100% used").className).toContain(
-      "--system-negative-strong",
-    );
     expect(queryByText("Add credits to continue.")).toBeNull();
     expect(queryByTestId("preferences-usage-add-credits")).toBeNull();
+  });
+
+  test("a BYOK route with a positive wallet keeps the red reading", async () => {
+    // The classifier proves the next turn dispatches on the user's own key,
+    // so whatever the wallet holds is not what gets spent.
+    totalUsageBalance = "25.00";
+    availableUsageBalance = "0.00";
+    effectiveBalance = "18.00";
+    byokRoute = true;
+    const { findByTestId, queryByText } = renderPanel();
+
+    const panel = await findByTestId("preferences-usage");
+    expect(panel.textContent).toContain("100% used");
+    expect(queryByText("Now using extra usage credits")).toBeNull();
+    expect(queryByText("Add credits to continue.")).toBeNull();
+  });
+
+  test("an unknown wallet withholds the extra-credits claim", async () => {
+    // Belt-and-braces: the balance and the grant figures ride the same
+    // summary now, so a reading without a balance is synthetic, but an
+    // unknown wallet must still never be described as holding credit.
+    totalUsageBalance = "25.00";
+    availableUsageBalance = "0.00";
+    effectiveBalance = null;
+    const { findByTestId, queryByText } = renderPanel();
+
+    const panel = await findByTestId("preferences-usage");
+    expect(panel.textContent).toContain("100% used");
+    expect(queryByText("Now using extra usage credits")).toBeNull();
+    expect(queryByText("Add credits to continue.")).toBeNull();
   });
 
   test("a reading below 100% stays neutral", async () => {
