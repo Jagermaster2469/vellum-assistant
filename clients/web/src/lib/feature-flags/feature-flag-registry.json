@@ -396,6 +396,14 @@
       "label": "iOS Avatar App Icon",
       "description": "Shows the App icon picker in Settings -> General, where any user chooses an eyes-on-color home screen icon for iOS, seeds the picker from their assistant's character avatar, or resets to the default. Every change is a press, and iOS confirms each one with an alert of its own. Off hides the picker and leaves the default icon in place.",
       "defaultEnabled": false
+    },
+    {
+      "id": "channel-conversation-sidecar",
+      "scope": "client",
+      "key": "channel-conversation-sidecar",
+      "label": "Channel Conversation Sidecar",
+      "description": "Renders a conversation bound to an external channel (Slack, Telegram, Discord, phone, email, and any other channel adapter) as two lanes in web chat: Vellum stays the primary full-width lane, and the canonical external-channel transcript moves into the existing read-only right drawer, opened from a channel-thread control in the chat header. Rows the client can attribute to the external channel are drawn once, in the drawer, instead of being blended into the Vellum lane. The drawer offers an Open in <channel> secondary action and a per-message Reference in Vellum action that stages one quoted reference above the Vellum composer. The Vellum composer stays the only input; nothing about delivery, routing, or permissions changes. Off leaves the header deep-link pill and the blended transcript unchanged.",
+      "defaultEnabled": false
     }
   ]
 }
