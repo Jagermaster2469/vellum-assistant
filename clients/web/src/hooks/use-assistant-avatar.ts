@@ -30,6 +30,17 @@ export interface AvatarData {
   components: CharacterComponents | null;
   traits: CharacterTraits | null;
   customImageUrl: string | null;
+  /**
+   * The render manifest the three fields above were derived from. Consumers
+   * that need `kind` rather than just traits read it from here so they stay on
+   * this one query, because a second query would miss the `avatar_updated`
+   * sweep that keeps this one live.
+   *
+   * Optional because surfaces that seed this cache by hand (the takeover
+   * avatar stash, stories) carry only what they paint with. A missing state
+   * reads as unknown, which every consumer must treat as "not a character".
+   */
+  state?: AvatarState | null;
 }
 
 const activeBlobUrls = new Map<string, string>();
@@ -94,6 +105,14 @@ export async function resolveAvatarFromState(
 }
 
 /**
+ * A read plus the manifest it was resolved from, so a consumer that needs
+ * `kind` rather than just traits reads both off this one query.
+ */
+export interface AvatarReadWithState extends AvatarRead {
+  state: AvatarState;
+}
+
+/**
  * Resolve the avatar render mode from the authoritative `/avatar/state`
  * manifest (assistants on `MIN_VERSION`+). Throws on a null state so React
  * Query keeps the previously cached avatar instead of blanking out — see
@@ -101,7 +120,7 @@ export async function resolveAvatarFromState(
  */
 export async function fetchAvatarViaManifest(
   assistantId: string,
-): Promise<AvatarRead> {
+): Promise<AvatarReadWithState> {
   const state = await fetchAvatarState(assistantId);
   if (state === null) {
     // `fetchAvatarState` returns null only on transport failure. Throw
@@ -111,7 +130,7 @@ export async function fetchAvatarViaManifest(
     // showing the last good avatar instead of blanking out to the "V".
     throw new Error("Failed to fetch avatar state");
   }
-  return resolveAvatarFromState(assistantId, state);
+  return { ...(await resolveAvatarFromState(assistantId, state)), state };
 }
 
 /**
@@ -155,16 +174,34 @@ export async function readAvatarViaLegacyFiles(
   };
 }
 
+/**
+ * The legacy file precedence restated as a manifest, so `state` has one shape
+ * on both paths. `source` and `image` stay null because the sidecar files
+ * carry neither.
+ */
+function legacyAvatarState(
+  traits: CharacterTraits | null,
+  imageUrl: string | null,
+): AvatarState {
+  if (imageUrl) {
+    return { kind: "image", traits: null, source: null, image: null };
+  }
+  if (traits) {
+    return { kind: "character", traits, source: null, image: null };
+  }
+  return { kind: "none", traits: null, source: null, image: null };
+}
+
 /** {@link readAvatarViaLegacyFiles} that throws on an inconclusive read, like the manifest path. */
 export async function fetchAvatarViaLegacyFiles(
   assistantId: string,
-): Promise<AvatarRead> {
+): Promise<AvatarReadWithState> {
   const { traits, imageUrl, conclusive } =
     await readAvatarViaLegacyFiles(assistantId);
   if (!conclusive) {
     throw new Error("Failed to fetch avatar sidecars");
   }
-  return { traits, imageUrl };
+  return { traits, imageUrl, state: legacyAvatarState(traits, imageUrl) };
 }
 
 /**
@@ -196,7 +233,7 @@ export function useAssistantAvatar(
       // last it must neither overwrite the last-seen entry nor revoke the
       // URL the newer query renders, so it drops its own blob instead.
       const generation = fetchGenerations.claim(id);
-      const [components, { traits, imageUrl }] = await Promise.all([
+      const [components, { state, traits, imageUrl }] = await Promise.all([
         fetchCharacterComponents(id),
         supportsManifest
           ? fetchAvatarViaManifest(id)
@@ -215,7 +252,7 @@ export function useAssistantAvatar(
         if (imageUrl) {
           URL.revokeObjectURL(imageUrl);
         }
-        return { components, traits, customImageUrl: null };
+        return { components, traits, customImageUrl: null, state };
       }
 
       trackBlobUrl(activeBlobUrls, id, imageUrl);
@@ -227,7 +264,7 @@ export function useAssistantAvatar(
         void persistLastSeenAvatar(client, id, { traits, imageUrl });
       }
 
-      return { components, traits, customImageUrl: imageUrl };
+      return { components, traits, customImageUrl: imageUrl, state };
     },
     enabled: Boolean(assistantId) && (options?.enabled ?? true),
     staleTime: Infinity,
@@ -251,6 +288,7 @@ export function useAssistantAvatar(
     components: data?.components ?? null,
     traits: data?.traits ?? null,
     customImageUrl: data?.customImageUrl ?? null,
+    state: data?.state ?? null,
     isLoading,
     isSuccess,
     invalidate,

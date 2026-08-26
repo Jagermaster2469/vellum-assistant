@@ -73,6 +73,18 @@
     "unsupportedDescription": "Notification settings are unavailable in this app version.",
     "unsupportedLabel": "Unavailable"
   },
+  "appIcon": {
+    "apply": "Set app icon",
+    "change": "Change",
+    "color": "Color",
+    "description": "Choose the icon Vellum shows on your home screen.",
+    "error": "iOS did not change your home screen icon. You can try again.",
+    "eyes": "Eyes",
+    "matchAvatar": "Match avatar",
+    "note": "Alternate icons ship with the app, and iOS confirms every change with an alert of its own.",
+    "reset": "Reset to default",
+    "title": "App icon"
+  },
   "assistantBackups": {
     "columnCreated": "Created",
     "columnReady": "Ready",

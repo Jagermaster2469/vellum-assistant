@@ -27,6 +27,7 @@ mock.module(
       components: null,
       traits: null,
       customImageUrl: null,
+      state: null,
       isLoading: false,
       isSuccess: true,
       invalidate: () => {},
