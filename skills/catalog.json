@@ -578,7 +578,7 @@
         }
       },
       "compatibility": "Works on both the Vellum desktop app (local daemon) and the Vellum web app (platform-hosted). Auth flow differs by environment.",
-      "updatedAt": "2026-08-27T04:08:20.000Z"
+      "updatedAt": "2026-08-27T04:20:00.000Z"
     },
     {
       "id": "meme-generator",
@@ -1067,7 +1067,7 @@
         }
       },
       "compatibility": "Designed for Vellum personal assistants",
-      "updatedAt": "2026-08-21T21:09:58.000Z"
+      "updatedAt": "2026-08-27T01:14:50.000Z"
     },
     {
       "id": "vellum-conversation-management",

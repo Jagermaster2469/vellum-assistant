@@ -1905,12 +1905,12 @@
     "storageTooltip": "Espacio de disco persistente para los archivos y datos de tu asistente"
   },
   "timezonePicker": {
-    "citiesAriaLabel": "Ciudades",
-    "closestCity": "Ciudad más cercana",
-    "noMatchingCities": "No hay ciudades coincidentes",
+    "noMatches": "Sin coincidencias",
     "notSet": "No configurada",
-    "searchPlaceholder": "Buscar ciudad o país...",
-    "timeZone": "Zona horaria"
+    "searchPlaceholder": "Buscar ciudad o desfase UTC...",
+    "timezone": "Zona horaria",
+    "timezonesAriaLabel": "Zonas horarias",
+    "zoneName": "Nombre de la zona"
   },
   "timezoneSection": {
     "description": "Se usa al mostrar horarios y programar recordatorios.",
