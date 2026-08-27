@@ -9,6 +9,8 @@
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 
+import { readProviderMetadata } from "../messaging/read-provider-metadata.js";
+
 mock.module("../config/env.js", () => ({
   isHttpAuthDisabled: () => true,
   getGatewayInternalBaseUrl: () => "http://127.0.0.1:7830",
@@ -249,7 +251,10 @@ describe("Slack delete propagation", () => {
     expect(slackMeta!.deletedAt).toBeUndefined();
   });
 
-  test("delete for row without slackMeta is a no-op (legacy row)", async () => {
+  test("delete for row without slackMeta stamps the neutral metadata", async () => {
+    // A legacy pre-enrichment row still gets its delete marked: the neutral
+    // envelope is synthesized so readProviderMetadata serves the stamp to
+    // every channel-agnostic reader, and content stays for audit.
     const seeded = seedSlackMessage({
       externalChatId: "C0123CHANNEL",
       originalTs: "2222.2222",
@@ -257,6 +262,7 @@ describe("Slack delete propagation", () => {
       withSlackMeta: false,
     });
 
+    const before = Date.now();
     const req = buildSlackDeleteRequest({
       externalChatId: seeded.externalChatId,
       deletedTs: seeded.originalTs,
@@ -265,7 +271,7 @@ describe("Slack delete propagation", () => {
     const json = (await resp.json()) as Record<string, unknown>;
 
     expect(json.accepted).toBe(true);
-    expect(json.deleted).toBe(false);
+    expect(json.deleted).toBe(true);
 
     const db = getDb();
     const row = db
@@ -277,6 +283,90 @@ describe("Slack delete propagation", () => {
     expect(row!.content).toBe("Legacy pre-upgrade text");
     const parsed = JSON.parse(row!.metadata!) as Record<string, unknown>;
     expect(parsed.slackMeta).toBeUndefined();
+    const neutral = readProviderMetadata(row!.metadata);
+    expect(neutral).not.toBeNull();
+    expect(neutral!.source).toBe("slack");
+    expect(neutral!.messageId).toBe(seeded.originalTs);
+    expect(neutral!.deletedAt).toBeDefined();
+    expect(neutral!.deletedAt!).toBeGreaterThanOrEqual(before);
+  });
+
+  test("a flat-legacy row's fields survive the delete stamp", async () => {
+    // Rows written before slackMeta nesting carry the Slack envelope flat in
+    // messages.metadata. The stamp bases on the mapped envelope, so thread
+    // and display identity remain readable beside deletedAt instead of
+    // being shadowed by a minimal synthesis.
+    const seeded = seedSlackMessage({
+      externalChatId: "C0123CHANNEL",
+      originalTs: "3333.3333",
+      content: "Flat legacy text",
+      withSlackMeta: false,
+    });
+    const db = getDb();
+    db.update(messages)
+      .set({
+        metadata: JSON.stringify({
+          source: "slack",
+          channelId: seeded.externalChatId,
+          channelTs: seeded.originalTs,
+          threadTs: "3000.0001",
+          eventKind: "message",
+          displayName: "Flat User",
+        }),
+      })
+      .where(eq(messages.id, seeded.messageId))
+      .run();
+
+    const req = buildSlackDeleteRequest({
+      externalChatId: seeded.externalChatId,
+      deletedTs: seeded.originalTs,
+    });
+    const resp = await handleChannelInbound(req, undefined, TEST_BEARER_TOKEN);
+    const json = (await resp.json()) as Record<string, unknown>;
+    expect(json.deleted).toBe(true);
+
+    const row = db
+      .select()
+      .from(messages)
+      .where(eq(messages.id, seeded.messageId))
+      .get();
+    const neutral = readProviderMetadata(row!.metadata);
+    expect(neutral).not.toBeNull();
+    expect(neutral!.deletedAt).toBeDefined();
+    expect(neutral!.threadId).toBe("3000.0001");
+    expect(neutral!.displayName).toBe("Flat User");
+  });
+
+  test("a row with malformed metadata still records its delete", async () => {
+    const seeded = seedSlackMessage({
+      externalChatId: "C0123CHANNEL",
+      originalTs: "4444.4444",
+      content: "Row with broken envelope",
+      withSlackMeta: false,
+    });
+    const db = getDb();
+    db.update(messages)
+      .set({ metadata: "{not json" })
+      .where(eq(messages.id, seeded.messageId))
+      .run();
+
+    const req = buildSlackDeleteRequest({
+      externalChatId: seeded.externalChatId,
+      deletedTs: seeded.originalTs,
+    });
+    const resp = await handleChannelInbound(req, undefined, TEST_BEARER_TOKEN);
+    const json = (await resp.json()) as Record<string, unknown>;
+    expect(json.accepted).toBe(true);
+    expect(json.deleted).toBe(true);
+
+    const row = db
+      .select()
+      .from(messages)
+      .where(eq(messages.id, seeded.messageId))
+      .get();
+    const neutral = readProviderMetadata(row!.metadata);
+    expect(neutral).not.toBeNull();
+    expect(neutral!.deletedAt).toBeDefined();
   });
 
   test("delete missing sourceMetadata.messageId is a no-op", async () => {
