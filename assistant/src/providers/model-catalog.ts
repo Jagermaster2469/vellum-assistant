@@ -2271,6 +2271,31 @@ const RAW_PROVIDER_CATALOG: ProviderCatalogEntry[] = [
     apiKeyUrl: "https://poolside.ai",
     apiKeyPlaceholder: "Your Poolside API key",
   },
+  {
+    id: "vellum",
+    displayName: "Vellum",
+    subtitle:
+      "Models served on Vellum GPU nodes through the managed connection.",
+    setupMode: "api-key",
+    setupHint:
+      "Uses the assistant API key through the Vellum managed connection. These models cannot use a bring-your-own key.",
+    featureFlag: "settings-developer-nav",
+    models: [
+      {
+        id: "qwen/qwen3-8b",
+        displayName: "Qwen3 8B",
+        contextWindowTokens: 32768,
+        maxOutputTokens: 32768,
+        supportsThinking: false,
+        supportsCaching: false,
+        supportsVision: false,
+        supportsToolUse: true,
+        pricing: { inputPer1mTokens: 0.3, outputPer1mTokens: 0.3 },
+        featureFlag: "settings-developer-nav",
+      },
+    ],
+    defaultModel: "qwen/qwen3-8b",
+  },
 ];
 
 export const PROVIDER_CATALOG: ProviderCatalogEntry[] =
