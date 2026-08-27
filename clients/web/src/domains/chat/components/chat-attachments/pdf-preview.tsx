@@ -1,4 +1,3 @@
-import { Loader2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
 // `?url` emits the package's prebuilt worker as a hashed asset and yields its
@@ -10,6 +9,7 @@ import type { PDFDocumentProxy } from "pdfjs-dist/legacy/build/pdf.mjs";
 // https://vite.dev/guide/assets#explicit-url-imports
 import PDF_WORKER_URL from "pdfjs-dist/legacy/build/pdf.worker.min.mjs?url";
 
+import { PdfPageSkeleton } from "@/domains/chat/components/chat-attachments/pdf-page-skeleton";
 import { dataUriToUint8Array } from "@/domains/chat/components/chat-attachments/utils";
 
 /**
@@ -63,6 +63,14 @@ export function PdfPreview({ url, className }: PdfPreviewProps) {
   const containerRef = useRef<HTMLSpanElement>(null);
   const [pdf, setPdf] = useState<PDFDocumentProxy | null>(null);
   const [numPages, setNumPages] = useState(0);
+  // Width/height of page 1, stamped onto each canvas as it mounts so the box
+  // holds a page's shape before anything is drawn into it: a canvas has no
+  // intrinsic size until `renderPage` runs, so the row would otherwise
+  // collapse to the 2:1 default and reflow again as each page arrives. Held
+  // in a ref, not state, because only the imperative mount/render pair reads
+  // it: React never owns `aspectRatio`, so it cannot re-apply the placeholder
+  // over the real dimensions `renderPage` sets.
+  const placeholderAspectRatio = useRef<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const canvasRefs = useRef<Map<number, HTMLCanvasElement>>(new Map());
@@ -77,6 +85,7 @@ export function PdfPreview({ url, className }: PdfPreviewProps) {
       setError(null);
       setPdf(null);
       setNumPages(0);
+      placeholderAspectRatio.current = null;
       renderedPages.current.clear();
 
       try {
@@ -95,6 +104,24 @@ export function PdfPreview({ url, className }: PdfPreviewProps) {
           void doc.destroy();
           return;
         }
+        // The proxy stays this function's to release until it is handed to
+        // state: the cleanup effect only destroys what it sees replaced or
+        // unmounted, so a document abandoned here would hold its worker for
+        // as long as the error state is on screen.
+        let firstPage;
+        try {
+          firstPage = await doc.getPage(1);
+        } catch (pageError) {
+          void doc.destroy();
+          throw pageError;
+        }
+        if (cancelled) {
+          void doc.destroy();
+          return;
+        }
+
+        const { width, height } = firstPage.getViewport({ scale: 1 });
+        placeholderAspectRatio.current = height > 0 ? width / height : null;
         setPdf(doc);
         setNumPages(Math.min(doc.numPages, MAX_PAGES));
       } catch {
@@ -157,6 +184,12 @@ export function PdfPreview({ url, className }: PdfPreviewProps) {
 
         canvas.width = viewport.width;
         canvas.height = viewport.height;
+        // The placeholder ratio is page 1's, a stand-in for a box with
+        // nothing in it yet. This page now carries its own dimensions, so
+        // drop the override and let them drive the height: a document mixing
+        // portrait and landscape pages would otherwise stretch every page
+        // after the first into page 1's shape.
+        canvas.style.aspectRatio = "";
 
         await page.render({ canvas, viewport }).promise;
       } catch {
@@ -197,6 +230,17 @@ export function PdfPreview({ url, className }: PdfPreviewProps) {
     (pageNum: number) => (el: HTMLCanvasElement | null) => {
       if (el) {
         canvasRefs.current.set(pageNum, el);
+        // Only ever a stand-in for an empty box. This callback's identity
+        // changes every render, so React detaches and reattaches the ref on
+        // a canvas that has already been drawn into, and re-stamping the
+        // placeholder there would stretch it back to page 1's shape with no
+        // second `renderPage` coming to clear it.
+        if (
+          placeholderAspectRatio.current !== null &&
+          !renderedPages.current.has(pageNum)
+        ) {
+          el.style.aspectRatio = String(placeholderAspectRatio.current);
+        }
       } else {
         canvasRefs.current.delete(pageNum);
       }
@@ -206,8 +250,11 @@ export function PdfPreview({ url, className }: PdfPreviewProps) {
 
   if (isLoading) {
     return (
-      <span className="flex items-center justify-center py-24">
-        <Loader2 className="h-8 w-8 animate-spin text-white/70" />
+      <span className="flex justify-center">
+        {/* Matches the canvases' own width cap, so the placeholder occupies
+            the box the pages will. Callers that size pages differently (the
+            drawer) override it the same way they override the canvases. */}
+        <PdfPageSkeleton className="w-[90vw] max-w-[800px]" />
       </span>
     );
   }
