@@ -215,9 +215,10 @@ describe("connect and identify", () => {
     };
     expect(identify.op).toBe(2);
     expect(identify.d.token).toBe("token-abc");
-    // GUILDS | GUILD_MESSAGES | DIRECT_MESSAGES: the unprivileged bitmask,
-    // pinned in intents.ts.
-    expect(identify.d.intents).toBe(4609);
+    // GUILDS | GUILD_MESSAGES | GUILD_MESSAGE_REACTIONS | DIRECT_MESSAGES |
+    // DIRECT_MESSAGE_REACTIONS: the unprivileged bitmask, pinned in
+    // intents.ts.
+    expect(identify.d.intents).toBe(13825);
   });
 
   test("a transient REST failure retries and connects on success", async () => {
@@ -460,6 +461,71 @@ describe("message admission and normalization", () => {
     ws.message(messageCreate({ channel_id: "thread-5" }));
     expect(h.events).toHaveLength(1);
     expect(h.events[0]?.message.conversationExternalId).toBe("channel-1");
+  });
+});
+
+describe("reaction dispatch", () => {
+  const reactionAdd = (overrides: Record<string, unknown> = {}) => ({
+    op: 0,
+    t: "MESSAGE_REACTION_ADD",
+    s: 3,
+    d: {
+      user_id: "user-1",
+      channel_id: "channel-1",
+      message_id: "msg-1",
+      guild_id: "guild-1",
+      emoji: { id: null, name: "\u{1F44D}" },
+      ...overrides,
+    },
+  });
+
+  test("a reaction add is forwarded with its structured payload", async () => {
+    const h = harness();
+    const ws = await connectAndReady(h);
+    ws.message(reactionAdd());
+
+    expect(h.events).toHaveLength(1);
+    const event = h.events[0];
+    expect(event.message.eventKind).toBe("reaction");
+    expect(event.message.reaction).toEqual({
+      op: "added",
+      emoji: "\u{1F44D}",
+      targetMessageId: "msg-1",
+    });
+    expect(event.actor.actorExternalId).toBe("user-1");
+  });
+
+  test("a reaction remove carries the removed op", async () => {
+    const h = harness();
+    const ws = await connectAndReady(h);
+    ws.message({ ...reactionAdd(), t: "MESSAGE_REACTION_REMOVE" });
+
+    expect(h.events).toHaveLength(1);
+    expect(h.events[0].message.reaction!.op).toBe("removed");
+  });
+
+  test("the bot's own reactions are self-echoes and never forwarded", async () => {
+    const h = harness();
+    const ws = await connectAndReady(h);
+    ws.message(reactionAdd({ user_id: "bot-1" }));
+
+    expect(h.events).toHaveLength(0);
+  });
+
+  test("a thread reaction resolves its parent conversation", async () => {
+    const h = harness();
+    const ws = await connectAndReady(h);
+    ws.message({
+      op: 0,
+      t: "THREAD_CREATE",
+      s: 2,
+      d: { id: "thread-5", type: 11, parent_id: "channel-1" },
+    });
+    ws.message(reactionAdd({ channel_id: "thread-5" }));
+
+    expect(h.events).toHaveLength(1);
+    expect(h.events[0].message.conversationExternalId).toBe("channel-1");
+    expect(h.events[0].source.threadId).toBe("thread-5");
   });
 });
 
