@@ -600,6 +600,16 @@
     "settingsAriaLabel": "Настройки использования и оплаты",
     "title": "Использование"
   },
+  "previewError": {
+    "cannotPreview": "Не удаётся показать этот файл"
+  },
+  "previewTruncationNotice": {
+    "markdown": "Показаны первые 512 КБ",
+    "text": "Показаны первые 2 МБ"
+  },
+  "previewUnsupported": {
+    "noPreviewForType": "Нет предпросмотра для этого типа файла"
+  },
   "promptTab": {
     "availableTools": "Доступные инструменты",
     "bannerNoSections": "У этого вызова ещё нет нормализованных секций промпта.",
