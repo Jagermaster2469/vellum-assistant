@@ -1,14 +1,21 @@
 /**
- * On-screen preview of a bundled iOS alternate app icon.
+ * On-screen preview of an iOS app icon.
  *
  * Draws what `clients/ios/scripts/generate-avatar-icons.ts` bakes into each
  * `avatar-eyes-<eyeStyle>-<color>.appiconset`: a solid field in the trait
- * color with the eye style's paths centered on it, the pair spanning half the
- * icon. The generator measures its artwork by rasterizing it, which the web
- * has no way to do, so the framing here comes from `tightPathBBox`, whose
- * curve-solved box is the same box a rasterizer would find. Framing against
- * the control-point box the voice room uses (`pathBBox`) would place the
- * `angry` eyes about 6% of the icon above where the shipped PNG has them.
+ * color with the eye style's paths centered on it, the pair spanning that
+ * style's share of the icon. The generator measures its artwork by rasterizing
+ * it, which the web has no way to do, so the framing here comes from
+ * `tightPathBBox`, whose curve-solved box is the same box a rasterizer would
+ * find. Framing against the control-point box the voice room uses (`pathBBox`)
+ * would place the `angry` eyes about 6% of the icon above where the shipped
+ * PNG has them.
+ *
+ * The app's primary icon (`clients/ios/App/App/AppIcon.icon`) is drawn by hand
+ * rather than generated, and places its pair at
+ * {@link DEFAULT_EYE_SPAN_FRACTION} whatever style it carries, so a preview
+ * standing in for it passes {@link AppIconPreviewProps.primary} to be framed
+ * that way.
  *
  * Purely presentational: no store, hook, or native bridge. An eye style or
  * color the components catalog does not carry renders as the field alone
@@ -22,14 +29,21 @@ import { tightPathBBox, unionBBox } from "@/utils/eye-bbox";
 import type { CharacterComponents, EyePathDefinition } from "@/types/avatar";
 
 /**
- * Fraction of the icon the eye pair spans, which states the invariant this
- * preview shares with the artwork it stands in for: the eye group spans half
- * the icon width, centered. The iOS icon generator holds the shipped PNGs to
- * that same invariant, and each side pins it in its own tests, since a web
- * bundle cannot import a build script that rasterizes SVG. Move this only when
- * the generator's `EYE_CANVAS_FRACTION` moves.
+ * Fraction of the icon an eye pair's tight bounds span, for every style the
+ * table below does not name.
+ *
+ * `clients/ios/scripts/generate-avatar-icons.ts` holds the shipped PNGs to
+ * this same number and table, and each side pins them in its own tests, since
+ * a web bundle cannot import a build script that rasterizes SVG. A span moves
+ * here only alongside that generator, and the catalog is regenerated with it.
  */
-const EYE_CANVAS_FRACTION = 0.5;
+const DEFAULT_EYE_SPAN_FRACTION = 0.5;
+
+/** Eye styles framed wider or narrower than {@link DEFAULT_EYE_SPAN_FRACTION}. */
+const EYE_SPAN_FRACTION_OVERRIDES: Record<string, number> = {
+  dazed: 0.55,
+  bashful: 0.4,
+};
 
 /**
  * Corner radius as a fraction of the icon's width. Close enough to the iOS
@@ -48,6 +62,12 @@ export interface AppIconPreviewProps {
   components: CharacterComponents | null;
   eyeStyle: string;
   color: string;
+  /**
+   * Frame the pair the way the app's primary icon frames its own: the whole
+   * {@link DEFAULT_EYE_SPAN_FRACTION}, whatever style is on screen. Alternates
+   * leave this off and take their own entry in the span table.
+   */
+  primary?: boolean;
   /** Rendered width and height in px. */
   size?: number;
   className?: string;
@@ -59,19 +79,25 @@ interface IconEyeArt {
   transform: string;
 }
 
+/** Fraction of the icon one style's pair spans. */
+function eyeSpanFraction(eyeStyleId: string): number {
+  return EYE_SPAN_FRACTION_OVERRIDES[eyeStyleId] ?? DEFAULT_EYE_SPAN_FRACTION;
+}
+
 /**
  * Scale and center an eye style's artwork on a `size` square field.
  *
- * The pair is fitted to {@link EYE_CANVAS_FRACTION} of the field by its wider
- * axis, so taking the smaller of the two ratios caps a pair taller than it is
- * wide at that same fraction of the height and an unusually tall pair cannot
- * outgrow a wide one. Returns null for art that is missing or degenerate,
- * which is what makes an unknown id render the field alone.
+ * The pair is fitted to its share of the field by its wider axis, so taking
+ * the smaller of the two ratios caps a pair taller than it is wide at that
+ * same fraction of the height and an unusually tall pair cannot outgrow a wide
+ * one. Returns null for art that is missing or degenerate, which is what makes
+ * an unknown id render the field alone.
  */
 function resolveEyeArt(
   components: CharacterComponents | null,
   eyeStyleId: string,
   size: number,
+  primary: boolean,
 ): IconEyeArt | null {
   const eyeStyle = components?.eyeStyles.find((eye) => eye.id === eyeStyleId);
   if (!eyeStyle || eyeStyle.paths.length === 0) {
@@ -83,7 +109,8 @@ function resolveEyeArt(
   if (bbox.w <= 0 || bbox.h <= 0) {
     return null;
   }
-  const span = size * EYE_CANVAS_FRACTION;
+  const span =
+    size * (primary ? DEFAULT_EYE_SPAN_FRACTION : eyeSpanFraction(eyeStyleId));
   const scale = Math.min(span / bbox.w, span / bbox.h);
   const translateX = size / 2 - (bbox.x + bbox.w / 2) * scale;
   const translateY = size / 2 - (bbox.y + bbox.h / 2) * scale;
@@ -97,12 +124,13 @@ export function AppIconPreview({
   components,
   eyeStyle,
   color,
+  primary = false,
   size = DEFAULT_SIZE,
   className,
 }: AppIconPreviewProps) {
   const art = useMemo(
-    () => resolveEyeArt(components, eyeStyle, size),
-    [components, eyeStyle, size],
+    () => resolveEyeArt(components, eyeStyle, size, primary),
+    [components, eyeStyle, size, primary],
   );
   const fieldHex = components?.colors.find((entry) => entry.id === color)?.hex;
   const radius = size * CORNER_RADIUS_FRACTION;

@@ -20,7 +20,7 @@
  *
  * Each entry is a classic `.appiconset` holding a single opaque 1024x1024 PNG:
  * a solid field in the trait color with the eye style's paths centered on top,
- * the same framing the default app icon in `App/App/AppIcon.icon` ships. The
+ * sized to that style's share of the icon (see {@link eyeSpanFraction}). The
  * PNGs carry no alpha channel at all; `encodeOpaqueRgbPng` below documents why.
  */
 
@@ -65,10 +65,22 @@ const GENERATOR_COMMAND = "bun clients/ios/scripts/generate-avatar-icons.ts";
 const ICON_PX = 1024;
 
 /**
- * Fraction of the icon an eye pair spans, matching the default app icon, whose
- * `quirky` eyes span half its width.
+ * Fraction of the icon an eye pair's tight bounds span, for every style the
+ * table below does not name.
+ *
+ * `clients/web/src/components/avatar/app-icon-preview.tsx` mirrors both this
+ * number and the table, so its on-screen preview frames a pair the way the
+ * shipped PNG does. Each side pins the numbers in its own tests, since a web
+ * bundle cannot import a build script that rasterizes SVG. A span moves here
+ * only alongside that file, and the catalog is regenerated with it.
  */
-const EYE_CANVAS_FRACTION = 0.5;
+const DEFAULT_EYE_SPAN_FRACTION = 0.5;
+
+/** Eye styles framed wider or narrower than {@link DEFAULT_EYE_SPAN_FRACTION}. */
+const EYE_SPAN_FRACTION_OVERRIDES: Record<string, number> = {
+  dazed: 0.55,
+  bashful: 0.4,
+};
 
 /**
  * Canvas the eye bounds below are measured on, in px. The scan reports whole
@@ -365,15 +377,21 @@ function eyeArtworkBounds(eyeStyle: EyeStyle): EyeBounds {
   return bounds;
 }
 
+/** Fraction of the icon one style's pair spans. */
+function eyeSpanFraction(eyeStyleId: string): number {
+  return EYE_SPAN_FRACTION_OVERRIDES[eyeStyleId] ?? DEFAULT_EYE_SPAN_FRACTION;
+}
+
 /**
  * One solid trait-color square with the eye pair centered on it, as SVG markup.
  * Shared by the icons themselves and by the contact sheet, so the preview shows
  * the same framing that ships.
  *
- * The eyes are scaled so their measured bounds span `EYE_CANVAS_FRACTION` of
- * the cell and centered on it. Taking the smaller of the two ratios is what
- * caps a pair taller than it is wide at that same fraction of the cell height,
- * so an unusually tall pair cannot outgrow a wide one.
+ * The eyes are scaled so their measured bounds span this style's share of the
+ * cell (see {@link eyeSpanFraction}) and centered on it. Taking the smaller of
+ * the two ratios is what caps a pair taller than it is wide at that same
+ * fraction of the cell height, so an unusually tall pair cannot outgrow a wide
+ * one.
  */
 function iconCellSvg(
   traits: AvatarIconTraits,
@@ -384,7 +402,7 @@ function iconCellSvg(
 ): string {
   const eyeStyle = requireEyeStyle(traits.eyeStyle);
   const bounds = eyeArtworkBounds(eyeStyle);
-  const span = size * EYE_CANVAS_FRACTION;
+  const span = size * eyeSpanFraction(eyeStyle.id);
   const scale = Math.min(span / bounds.width, span / bounds.height);
   const translateX = x + size / 2 - (bounds.minX + bounds.width / 2) * scale;
   const translateY = y + size / 2 - (bounds.minY + bounds.height / 2) * scale;

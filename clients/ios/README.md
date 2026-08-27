@@ -322,15 +322,21 @@ inline in `App/project.yml` under the `AppEnvironment` template.
   `.appiconset` per eye style and color, named `avatar-eyes-<eye>-<color>`.
   Every combination ships: 9 eye styles × 6 colors, so 54 sets. Each set is a
   single opaque 1024×1024 `icon.png` covering every idiom: a solid field in the
-  trait color with that eye pair centered on top, spanning half the icon width,
-  the same framing `AppIcon.icon` uses. Body shape is deliberately not part of
-  the artwork or the name, so an avatar's icon follows its eyes and color
-  alone. App icons may not be transparent, so the background is baked into the
-  pixels and the file is encoded as PNG color type 2 (RGB, no alpha channel at
-  all). App Store validation rejects an app icon that carries an alpha channel
-  (ITMS-90717), and that only surfaces at TestFlight upload, so the generator
-  asserts every pixel is opaque and drops the channel rather than shipping a
-  fully opaque RGBA image.
+  trait color with that eye pair centered on top, fitted by its longer edge to
+  that style's span. Most styles span half the icon width, the framing
+  `AppIcon.icon` uses; `dazed` spans 0.55 so it reads at the size of the rest,
+  and `bashful` spans 0.40 so it does not draw the same icon as `surprised`,
+  which is the same shape. The spans live in a table at the top of the
+  generator, mirrored by
+  `clients/web/src/components/avatar/app-icon-preview.tsx` so the picker's
+  on-screen preview frames a pair the way the shipped PNG does. Body shape is
+  deliberately not part of the artwork or the name, so an avatar's icon follows
+  its eyes and color alone. App icons may not be transparent, so the background
+  is baked into the pixels and the file is encoded as PNG color type 2 (RGB, no
+  alpha channel at all). App Store validation rejects an app icon that carries
+  an alpha channel (ITMS-90717), and that only surfaces at TestFlight upload,
+  so the generator asserts every pixel is opaque and drops the channel rather
+  than shipping a fully opaque RGBA image.
 - The catalog and `Config/AvatarIcons.xcconfig`
   (`ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES`) are generated
   output produced from the avatar component library (`assistant/src/avatar/`)
@@ -379,9 +385,9 @@ the cost.
 
 | Catalog | Committed PNGs | `Assets.car` |
 | ------- | -------------- | ------------ |
-| 54 eyes-on-color alternates | 593,575 B (0.57 MiB) | 1,193,784 B (1.14 MiB) |
+| 54 eyes-on-color alternates | 590,542 B (0.56 MiB) | 1,188,152 B (1.13 MiB) |
 
-That is **21.6 KiB per alternate icon** compiled. The whole catalog is one
+That is **21.5 KiB per alternate icon** compiled. The whole catalog is one
 `Assets.car` slice, so the cost lands on every install whether or not the user
 ever switches icons.
 
@@ -395,7 +401,7 @@ replaces every one of those edges with a six-pixel gradient ramp:
 
 | Full catalog, 54 icons | Committed PNGs | `Assets.car` |
 | ---------------------- | -------------- | ------------ |
-| Native 1024 render | 593,575 B (0.57 MiB) | 1,193,784 B (1.14 MiB) |
+| Native 1024 render | 590,542 B (0.56 MiB) | 1,188,152 B (1.13 MiB) |
 | 180 px detail, bilinear upscale | 3,764,157 B (3.59 MiB) | 6,817,336 B (6.50 MiB) |
 
 Rendering at 360 px instead of 180 only halves the overshoot. Nearest-neighbour
