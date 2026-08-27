@@ -6,7 +6,10 @@
  * messages reach this handler.
  */
 import type { SourceMetadata } from "@vellumai/gateway-client";
-import { resolveInboundEventKind } from "@vellumai/gateway-client";
+import {
+  resolveInboundEventKind,
+  resolveInboundReactionPayload,
+} from "@vellumai/gateway-client";
 import {
   ADMISSION_POLICY_DEFAULT,
   type AdmissionPolicy,
@@ -121,8 +124,8 @@ import { handleGuardianActivationIntercept } from "./inbound-stages/guardian-act
 import { handleGuardianReplyIntercept } from "./inbound-stages/guardian-reply-intercept.js";
 import { prepareChannelInboundContent } from "./inbound-stages/inbound-content-prep.js";
 import {
-  handleSlackReactionIntercept,
-  isSlackReactionEvent,
+  handleReactionIntercept,
+  isReactionEvent,
 } from "./inbound-stages/reaction-intercept.js";
 import { runSecretIngressCheck } from "./inbound-stages/secret-ingress-check.js";
 import { tryTranscribeAudioAttachments } from "./inbound-stages/transcribe-audio.js";
@@ -424,7 +427,7 @@ export async function handleChannelInbound({
     return guardianActivationResponse;
   }
 
-  // ── Slack reaction handling ──
+  // ── Reaction handling ──
   // Reactions are passive channel signals — not messages, and not access
   // attempts. Dispatch them to a dedicated interceptor BEFORE the message
   // pipeline (ACL, admission floor, disk-pressure, conversation binding) so a
@@ -434,10 +437,20 @@ export async function handleChannelInbound({
   // transcript signals in the conversation of the reacted message, and routes
   // a guardian's reaction on an approval card through the guardian decision
   // pipeline. Reactions never mint a conversation and never drive an agent
-  // turn.
-  if (isSlackReactionEvent(body)) {
-    return handleSlackReactionIntercept({
-      callbackData: body.callbackData!,
+  // turn. A family member whose payload does not resolve (no emoji or no
+  // target message id) is dropped as noise here: the kind names the family,
+  // so it must never fall through and be read as a message.
+  if (isReactionEvent(body)) {
+    const reaction = resolveInboundReactionPayload(body);
+    if (!reaction) {
+      log.debug(
+        { sourceChannel, conversationExternalId },
+        "Dropping reaction with unresolvable payload",
+      );
+      return { accepted: true, reaction: "dropped_unresolvable_payload" };
+    }
+    return handleReactionIntercept({
+      reaction,
       sourceChannel,
       sourceInterface,
       conversationExternalId,
@@ -1187,11 +1200,11 @@ export async function handleChannelInbound({
     // so checking for empty content alone would miss stale callbacks.
     //
     // Reaction events (`reaction:` / `reaction_removed:`) are persisted by
-    // the earlier `isSlackReactionEvent` branch and never reach here; guard
+    // the earlier `isReactionEvent` branch and never reach here; guard
     // explicitly so a future refactor can't let a reaction ts drive a
     // "This approval request has been resolved." edit that would clobber
     // the user's reacted-to message.
-    if (hasCallbackData && !isSlackReactionEvent(body)) {
+    if (hasCallbackData && !isReactionEvent(body)) {
       // Record seen signal even for stale callbacks — the user still interacted
       if (sourceChannel === "telegram" || sourceChannel === "slack") {
         try {
