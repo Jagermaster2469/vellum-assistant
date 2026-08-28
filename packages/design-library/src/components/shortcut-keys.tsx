@@ -281,7 +281,12 @@ const ARIA_MODIFIERS: Record<ShortcutPlatform, Record<string, string>> = {
   },
 };
 
-/** Named keys as their UI Events `KeyboardEvent.key` values. */
+/**
+ * Named keys as their UI Events `KeyboardEvent.key` values, for the ones an
+ * accelerator spells differently. Keys an accelerator already spells the UI
+ * Events way (`F5`, `Insert`, the punctuation keys) are absent and pass
+ * through untouched.
+ */
 const ARIA_KEYS: Record<string, string> = {
   up: "ArrowUp",
   down: "ArrowDown",
@@ -300,16 +305,74 @@ const ARIA_KEYS: Record<string, string> = {
   home: "Home",
   end: "End",
   plus: "+",
+  capslock: "CapsLock",
+  numlock: "NumLock",
+  scrolllock: "ScrollLock",
+  printscreen: "PrintScreen",
+  // The numpad keys announce as the character they produce.
+  num0: "0",
+  num1: "1",
+  num2: "2",
+  num3: "3",
+  num4: "4",
+  num5: "5",
+  num6: "6",
+  num7: "7",
+  num8: "8",
+  num9: "9",
+  numdec: ".",
+  numadd: "+",
+  numsub: "-",
+  nummult: "*",
+  numdiv: "/",
+  insert: "Insert",
+  // Electron's media and volume names differ from the UI Events values, which
+  // is the one place passing the token through would emit something assistive
+  // technology does not recognise.
+  volumeup: "AudioVolumeUp",
+  volumedown: "AudioVolumeDown",
+  volumemute: "AudioVolumeMute",
+  medianexttrack: "MediaTrackNext",
+  mediaprevioustrack: "MediaTrackPrevious",
+  mediastop: "MediaStop",
+  mediaplaypause: "MediaPlayPause",
 };
 
 /**
  * The `aria-keyshortcuts` value for an accelerator: `"CmdOrCtrl+Shift+P"`
- * becomes `"Meta+Shift+P"` on macOS and `"Control+Shift+P"` on Windows.
+ * becomes `"Shift+Meta+P"` on macOS and `"Control+Shift+P"` on Windows,
+ * modifiers in the platform's order so the announced binding reads the same
+ * way as the drawn one.
  *
  * Menus draw the glyph form and hide it from assistive tech, so this is the
  * only channel through which a screen reader learns the binding. Derived from
  * the same accelerator the glyphs come from, so the two cannot disagree.
  */
+/**
+ * A key {@link ARIA_KEYS} does not name, as its UI Events value.
+ *
+ * A single character announces uppercase, which is what the attribute's own
+ * examples use, and a function key normalises its own case. Anything else is
+ * returned as written: the accelerator grammar accepts named keys in any case,
+ * so {@link ARIA_KEYS} carries every one whose canonical spelling this cannot
+ * recover, and reaching here otherwise means a key the grammar does not accept.
+ *
+ * The drawn glyphs are hidden, so whatever this returns is the only thing a
+ * screen reader has.
+ */
+const FUNCTION_KEY = /^f([1-9]|1\d|2[0-4])$/;
+
+const ariaKeyFallback = (token: string): string => {
+  if (token.length === 1) {
+    return token.toUpperCase();
+  }
+  const lower = token.toLowerCase();
+  if (FUNCTION_KEY.test(lower)) {
+    return lower.toUpperCase();
+  }
+  return token;
+};
+
 export const acceleratorToAriaKeyShortcuts = (
   accelerator: string,
   platform: ShortcutPlatform = detectShortcutPlatform(),
@@ -320,7 +383,7 @@ export const acceleratorToAriaKeyShortcuts = (
       return (
         ARIA_MODIFIERS[platform][lower] ??
         ARIA_KEYS[lower] ??
-        token.toUpperCase()
+        ariaKeyFallback(token)
       );
     })
     .join("+");
@@ -330,16 +393,43 @@ export interface ShortcutKeysProps extends ComponentProps<"span"> {
   accelerator: string;
   /** Key-cap vocabulary; defaults to the detected host. */
   platform?: ShortcutPlatform;
+  /**
+   * `"caps"` draws one boxed key per token, for a surface where the binding is
+   * the subject of the row (the Keyboard Shortcuts settings, where it is also
+   * being edited). `"inline"` draws the compact glyph run a dense row has space
+   * for, which is what a menu or a palette wants beside a command's name.
+   */
+  variant?: "caps" | "inline";
 }
 
 export function ShortcutKeys({
   accelerator,
   platform,
   className,
+  variant = "caps",
   ref,
   ...rest
 }: ShortcutKeysProps) {
   const caps = parseAccelerator(accelerator, platform);
+
+  if (variant === "inline") {
+    return (
+      <span
+        {...rest}
+        ref={ref}
+        data-slot="shortcut-keys"
+        data-variant="inline"
+        className={cn(
+          "text-body-small-default tracking-wide",
+          "text-[color:var(--content-tertiary)]",
+          className,
+        )}
+      >
+        {formatAcceleratorHint(accelerator, platform)}
+      </span>
+    );
+  }
+
   return (
     <span
       {...rest}
