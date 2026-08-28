@@ -57,22 +57,89 @@ export function classifyWorkerOwnership(
   return "foreign";
 }
 
-/**
- * Command lines that identify an assistant daemon, running from source
- * (`.../daemon/main.ts`) or as the packaged binary.
- */
-const DAEMON_PROCESS_PATTERN = /vellum-daemon|[\\/]daemon[\\/]main/;
+/** The packaged daemon binary, with or without a Windows extension. */
+const PACKAGED_DAEMON_ARGV0 = /^vellum-daemon(\.exe)?$/i;
+
+/** The runtime the source daemon is launched under. */
+const BUN_ARGV0 = /^bun(\.exe)?$/i;
+
+/** The daemon entry script, as a whole trailing path segment pair. */
+const DAEMON_ENTRY_ARG = /(^|\/)daemon\/main\.(ts|js)$/;
 
 /**
- * Whether a command line belongs to an assistant daemon.
+ * Split a command line into argv, keeping quoted paths whole.
  *
- * For a worker with exactly one legitimate owner, "is the owner alive" is not
- * the same question as "does some process still hold that PID". The OS recycles
- * PIDs, and a recycled owner PID would otherwise leave a stranded worker
- * looking owned, and therefore untouchable, indefinitely.
+ * Splitting on whitespace first would shred the ordinary Windows install path
+ * `"C:\\Program Files\\Vellum\\...\\vellum-daemon.exe"` into `"C:\\Program` and
+ * make the packaged daemon unrecognisable, which is the very install this
+ * recovery path exists for. Separators are normalised per token so a caller
+ * can take a basename either way.
+ */
+function tokenizeCommandLine(command: string): string[] {
+  const tokens: string[] = [];
+  let current = "";
+  let quote: string | null = null;
+  let started = false;
+
+  for (const ch of command) {
+    if (quote !== null) {
+      if (ch === quote) {
+        quote = null;
+      } else {
+        current += ch;
+      }
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      started = true;
+      continue;
+    }
+    if (/\s/.test(ch)) {
+      if (started) {
+        tokens.push(current);
+        current = "";
+        started = false;
+      }
+      continue;
+    }
+    current += ch;
+    started = true;
+  }
+  if (started) {
+    tokens.push(current);
+  }
+  return tokens.map((token) => token.replaceAll("\\", "/"));
+}
+
+/**
+ * Whether a command line is an assistant daemon, judged by argv shape rather
+ * than by substring.
+ *
+ * Two accepted shapes: the packaged binary as argv0 (which also covers the
+ * source daemon once `process.title` rewrites its argv), or bun as argv0 with
+ * the daemon entry script among its arguments.
+ *
+ * The shape matters because this authorises an irreversible signal. A
+ * substring test would accept any command line that merely mentions a
+ * `daemon/main` path, so an unrelated service, an editor, or a test runner
+ * holding a recycled PID would qualify. `cli/src/lib/orphan-detection.test.ts`
+ * already pins that exact collision (`node /opt/unrelated-service/daemon/main.ts`)
+ * as something we must not claim.
  */
 export function isDaemonCommand(command: string | null): boolean {
-  return command != null && DAEMON_PROCESS_PATTERN.test(command);
+  if (command == null) {
+    return false;
+  }
+  const tokens = tokenizeCommandLine(command);
+  const argv0 = tokens[0]?.split("/").pop() ?? "";
+  if (PACKAGED_DAEMON_ARGV0.test(argv0)) {
+    return true;
+  }
+  if (!BUN_ARGV0.test(argv0)) {
+    return false;
+  }
+  return tokens.slice(1).some((token) => DAEMON_ENTRY_ARG.test(token));
 }
 
 /**
