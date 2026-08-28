@@ -126,6 +126,12 @@ is used when its sha256 matches `scripts/bun-release.ts`, otherwise the
 matching GitHub release is downloaded and verified. Bump the pins there when
 the Bun version changes.
 
+`build:preview-handler` installs its manifest dependencies before invoking
+MSBuild. It resolves vcpkg from `VCPKG_ROOT`, the local Vellum build-tools
+checkout, or `PATH`, in that order. The checkout must contain full Git history
+for the manifest's pinned dependency baseline. The Visual Studio-bundled vcpkg
+may be too old for that baseline.
+
 Local and CI packs are unsigned. `.github/workflows/windows-package-smoke.yaml`
 runs the same steps per architecture, then install-, launch-, and
 uninstall-tests the installer.

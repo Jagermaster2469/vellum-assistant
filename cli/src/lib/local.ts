@@ -140,6 +140,18 @@ function compiledSibling(name: string): string {
   return join(dirname(process.execPath), executableName(name, platform()));
 }
 
+function envWithCompiledRuntimeNodePath(
+  env: Record<string, string>,
+): Record<string, string> {
+  if (!isCompiledCli()) {
+    return env;
+  }
+  return {
+    ...env,
+    NODE_PATH: join(dirname(process.execPath), "node_modules"),
+  };
+}
+
 function resolveBunExecutable(): string {
   if (!isCompiledCli()) {
     return process.execPath;
@@ -1654,6 +1666,7 @@ export async function startLocalDaemon(
         }
       }
       applyDaemonEnvOverrides(daemonEnv, resources, options);
+      const daemonSpawnEnv = envWithCompiledRuntimeNodePath(daemonEnv);
 
       // Write a sentinel PID file before spawning so concurrent hatch() calls
       // see the file and fall through to the isDaemonResponsive() port check
@@ -1664,7 +1677,7 @@ export async function startLocalDaemon(
         ? spawn(daemonBinary, [], {
             cwd: dirname(daemonBinary),
             stdio: "inherit",
-            env: daemonEnv,
+            env: daemonSpawnEnv,
             windowsHide: true,
           })
         : (() => {
@@ -1674,7 +1687,7 @@ export async function startLocalDaemon(
               detached: true,
               stdio: ["ignore", "pipe", "pipe"],
               windowsHide: true,
-              env: daemonEnv,
+              env: daemonSpawnEnv,
             });
             pipeToLogFile(c, daemonLogFd, "daemon");
             c.unref();
@@ -1886,7 +1899,7 @@ export async function startGateway(
       detached: true,
       stdio: ["ignore", "pipe", "pipe"],
       windowsHide: true,
-      env: gatewayEnv,
+      env: envWithCompiledRuntimeNodePath(gatewayEnv),
     });
     pipeToLogFile(gateway, gatewayLogFd, "gateway");
   } else {
