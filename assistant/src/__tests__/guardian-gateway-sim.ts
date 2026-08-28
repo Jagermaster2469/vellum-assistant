@@ -358,7 +358,9 @@ export function createGuardianGatewaySim() {
     row.status = "expired";
     row.updatedAt = Date.now();
     for (const delivery of deliveries) {
-      if (delivery.requestId === id) {
+      // A withdrawn row is the daemon's per-surface receipt; the gateway
+      // preserves it through the bulk flip.
+      if (delivery.requestId === id && delivery.status !== "withdrawn") {
         delivery.status = "expired";
         delivery.updatedAt = Date.now();
       }
@@ -387,19 +389,18 @@ export function createGuardianGatewaySim() {
     return expired;
   }
 
-  async function sweepExpiredGuardianRequests(
-    now?: number,
+  async function listExpiredPendingGuardianRequests(
+    limit = 50,
   ): Promise<SimGuardianRequest[]> {
-    const cutoff = now ?? Date.now();
-    const expired: SimGuardianRequest[] = [];
+    const cutoff = Date.now();
+    const stale: SimGuardianRequest[] = [];
     for (const row of requests.values()) {
       if (row.status === "pending" && isGuardianRequestExpired(row, cutoff)) {
-        row.status = "expired";
-        row.updatedAt = cutoff;
-        expired.push({ ...row });
+        stale.push({ ...row });
       }
     }
-    return expired;
+    stale.sort((a, b) => (a.expiresAt ?? 0) - (b.expiresAt ?? 0));
+    return stale.slice(0, limit);
   }
 
   async function createGuardianRequestDelivery(
@@ -592,7 +593,7 @@ export function createGuardianGatewaySim() {
     decideGuardianRequest,
     expireGuardianRequest,
     expireInteractionBoundGuardianRequests,
-    sweepExpiredGuardianRequests,
+    listExpiredPendingGuardianRequests,
     createGuardianRequestDelivery,
     updateGuardianRequestDelivery,
     listGuardianRequestDeliveries,

@@ -11,15 +11,16 @@ import {
   and,
   desc,
   eq,
-  inArray,
   isNotNull,
   isNull,
   lt,
+  ne,
   notInArray,
   or,
 } from "drizzle-orm";
 
 import {
+  DELIVERY_WITHDRAWN_STATUS,
   type GuardianRequestDeliveryWire,
   type GuardianRequestStatus,
   type GuardianRequestWire,
@@ -437,8 +438,8 @@ export function resolveGuardianRequest(
      * Make the deadline part of the CAS: the transition applies only while
      * `expires_at` is null or still in the future. The decide path sets
      * this so a decision in flight across the deadline boundary loses the
-     * arbitration atomically, instead of committing after expiry has
-     * already begun acting on the request.
+     * arbitration atomically, instead of committing while the expiry sweep
+     * is already withdrawing the request's cards.
      */
     requireUnexpired?: boolean;
   },
@@ -510,10 +511,10 @@ const INTERACTION_BOUND_KINDS = ["tool_approval", "pending_question"];
  * restart.
  *
  * Persistent kinds are deliberately untouched, whatever their deadline:
- * their expiry belongs to the sweep, which fans out the card withdrawal
- * and requester notice for every row it expires. A bulk flip here strands
- * those side effects, because no sweep ever revisits a row that already
- * left `pending`. Dedup reads are time-based
+ * their expiry belongs to the sweep, whose per-request confirmation is what
+ * keeps the card-withdrawal and requester-notice fan-out recoverable, and
+ * an unconditional flip here would strand exactly the side effects a
+ * pre-restart crash left owed. Dedup reads are time-based
  * (`isGuardianRequestExpired`), so a past-deadline row waiting for the
  * sweep suppresses nothing.
  *
@@ -534,51 +535,36 @@ export function expireAllPendingInteractionBound(): number {
     .run(now, ...INTERACTION_BOUND_KINDS).changes;
 }
 
+/** Ceiling on one expiry batch, whatever the caller asks for. */
+const MAX_EXPIRED_PENDING_BATCH = 200;
+
 /**
- * Sweep-expire pending requests whose `expiresAt` deadline has passed.
- * Returns the expired rows as written so the daemon's card-withdrawal and
- * expiry-notification fan-out needs no follow-up read.
+ * List pending requests whose `expiresAt` deadline has passed, oldest
+ * deadline first, bounded. Read-only: the status flip is the caller's
+ * per-request confirmation (`expireGuardianRequest`) after that request's
+ * expiry side effects have run, so a row's work stays discoverable here
+ * until it is actually done. The bound keeps a round's IPC payload and the
+ * caller's fan-out finite however large a backlog grows.
  */
-export function sweepExpiredGuardianRequests(
+export function listExpiredPendingGuardianRequests(
   now = Date.now(),
+  limit = 50,
 ): GuardianRequest[] {
   const db = getGatewayDb();
-
-  return db.transaction(() => {
-    const stale = db
-      .select()
-      .from(guardianRequests)
-      .where(
-        and(
-          eq(guardianRequests.status, "pending"),
-          isNotNull(guardianRequests.expiresAt),
-          lt(guardianRequests.expiresAt, now),
-        ),
-      )
-      .all();
-
-    if (stale.length === 0) {
-      return [];
-    }
-
-    const updatedAt = Date.now();
-    db.update(guardianRequests)
-      .set({ status: "expired", updatedAt })
-      .where(
-        and(
-          inArray(
-            guardianRequests.id,
-            stale.map((row) => row.id),
-          ),
-          eq(guardianRequests.status, "pending"),
-        ),
-      )
-      .run();
-
-    return stale.map((row) =>
-      rowToRequest({ ...row, status: "expired", updatedAt }),
-    );
-  });
+  return db
+    .select()
+    .from(guardianRequests)
+    .where(
+      and(
+        eq(guardianRequests.status, "pending"),
+        isNotNull(guardianRequests.expiresAt),
+        lt(guardianRequests.expiresAt, now),
+      ),
+    )
+    .orderBy(guardianRequests.expiresAt)
+    .limit(Math.min(Math.max(1, limit), MAX_EXPIRED_PENDING_BATCH))
+    .all()
+    .map(rowToRequest);
 }
 
 /**
@@ -609,9 +595,17 @@ export function expireGuardianRequest(id: string): void {
       .where(eq(guardianRequests.id, id))
       .run();
 
+    // A `withdrawn` row is the daemon's receipt that the surface edit
+    // durably ran; restamping it would erase which surfaces were actually
+    // cleaned. Rows in any other state expire with the request.
     db.update(guardianRequestDeliveries)
       .set({ status: "expired", updatedAt: now })
-      .where(eq(guardianRequestDeliveries.requestId, id))
+      .where(
+        and(
+          eq(guardianRequestDeliveries.requestId, id),
+          ne(guardianRequestDeliveries.status, DELIVERY_WITHDRAWN_STATUS),
+        ),
+      )
       .run();
   });
 }

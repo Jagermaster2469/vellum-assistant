@@ -268,8 +268,8 @@ export {
   ListGuardianRequestsIpcParamsSchema,
   ListPendingGuardianRequestsByDestinationIpcParamsSchema,
   ListPendingGuardianRequestsByScopeIpcParamsSchema,
-  SweepExpiredGuardianRequestsIpcParamsSchema,
-  SweepExpiredGuardianRequestsIpcResponseSchema,
+  DELIVERY_WITHDRAWN_STATUS,
+  ListExpiredPendingGuardianRequestsIpcParamsSchema,
   UpdateGuardianRequestDeliveryIpcParamsSchema,
   UpdateGuardianRequestIpcParamsSchema,
 } from "./guardian-request-contract.js";
@@ -306,8 +306,7 @@ export type {
   ListGuardianRequestsIpcParams,
   ListPendingGuardianRequestsByDestinationIpcParams,
   ListPendingGuardianRequestsByScopeIpcParams,
-  SweepExpiredGuardianRequestsIpcParams,
-  SweepExpiredGuardianRequestsIpcResponse,
+  ListExpiredPendingGuardianRequestsIpcParams,
   UpdateGuardianRequestDeliveryIpcParams,
   UpdateGuardianRequestIpcParams,
 } from "./guardian-request-contract.js";

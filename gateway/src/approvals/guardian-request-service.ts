@@ -34,7 +34,6 @@ import {
   type GuardianRequestWire,
   type ListGuardianRequestsIpcParams,
   type ListPendingGuardianRequestsByDestinationIpcParams,
-  type SweepExpiredGuardianRequestsIpcResponse,
   type UpdateGuardianRequestDeliveryIpcParams,
 } from "@vellumai/gateway-client";
 
@@ -58,7 +57,7 @@ import {
   listPendingByDestinationChat,
   listPendingByDestinationConversation,
   resolveGuardianRequest,
-  sweepExpiredGuardianRequests,
+  listExpiredPendingGuardianRequests,
   updateDelivery,
   updateGuardianRequest as storeUpdateGuardianRequest,
 } from "../db/guardian-request-store.js";
@@ -136,15 +135,17 @@ export function expireInteractionBoundRequests(): ExpireInteractionBoundIpcRespo
 }
 
 /**
- * Deadline sweep: CAS-expires past-`expiresAt` pending requests and returns
- * the expired rows for daemon-side card-withdrawal / notification fan-out.
+ * Bounded, read-only probe for the daemon's expiry sweep: pending requests
+ * past their deadline, oldest first. The daemon confirms each one with
+ * `expireGuardianRequest` after running its side effects.
  */
-export function sweepExpiredRequests(
+export function listExpiredPendingRequests(
   now?: number,
-): SweepExpiredGuardianRequestsIpcResponse {
-  return {
-    expired: sweepExpiredGuardianRequests(now).map(toGuardianRequestWire),
-  };
+  limit?: number,
+): GuardianRequestWire[] {
+  return listExpiredPendingGuardianRequests(now, limit).map(
+    toGuardianRequestWire,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -305,9 +306,9 @@ export async function decideGuardianRequest(
         decidedByPrincipalId: params.decidedByPrincipalId,
       },
       // The deadline is part of the arbitration: a decision that reaches
-      // this transaction past `expiresAt` loses to expiry atomically,
-      // instead of committing while expiry side effects (card withdrawal,
-      // the requester notice) may already be acting on the request.
+      // this transaction past `expiresAt` loses to expiry atomically, so
+      // the sweep's fan-out-then-confirm order can never race a decision
+      // into an approved request whose cards say it expired.
       { requireUnexpired: true },
     );
     if (!cas.applied) {
