@@ -790,7 +790,7 @@
     "verificationFailed": "验证失败",
     "verifiedTitle": "DNS 记录已验证。您的域名已准备好发送和接收电子邮件。",
     "verifyingDomain": "正在验证域名…",
-    "verifyingTitle": "DNS 记录已配置。正在等待电子邮件提供商验证它们——这通常需要几分钟。"
+    "verifyingTitle": "DNS 记录已配置。正在等待电子邮件提供商验证它们 - 这通常需要几分钟。"
   },
   "managedServicesBanner": {
     "body": "托管服务按量计费，并从您的 Vellum 账户余额中扣除。<link>查看定价</link>"
@@ -799,5 +799,14 @@
     "managedLabel": "托管",
     "modeToggleAriaLabel": "服务模式",
     "yourOwnLabel": "自托管"
+  },
+  "channelAvatarDownload": {
+    "previewAlt": "您的助手头像",
+    "download": "下载头像",
+    "prompt": {
+      "slack": "下载您的助手头像以上传为应用图标。",
+      "discord": "下载您的助手头像以上传为机器人图标。",
+      "telegram": "下载您的助手头像，然后使用 /setuserpic 发送给 BotFather。"
+    }
   }
 }
