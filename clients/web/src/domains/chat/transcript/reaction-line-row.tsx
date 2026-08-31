@@ -1,15 +1,11 @@
-import { useTranslation } from "@/i18n";
+import { useEmojiLookup } from "@/domains/chat/components/chat-composer/emoji-catalog";
+import { displayReactionEmoji } from "@/domains/chat/transcript/transcript-message-body-shared";
 import type { DisplayMessage } from "@/domains/chat/types/types";
+import { useTranslation } from "@/i18n";
 
-/**
- * Quiet line for a reaction row, either direction, rendered from the
- * projected reaction fact rather than the row's stored sentinel text.
- * Slack-shaped rows keep their richer Slack transcript line; this covers
- * every other channel and the assistant's own reactions, until the
- * reaction-pill UI replaces both.
- */
 export function ReactionLineRow({ message }: { message: DisplayMessage }) {
   const { t } = useTranslation("chat");
+  const lookupEmoji = useEmojiLookup();
   const reaction = message.reaction;
   if (!reaction) {
     return null;
@@ -27,7 +23,7 @@ export function ReactionLineRow({ message }: { message: DisplayMessage }) {
       className="text-body-small-default text-[var(--content-tertiary)] italic"
     >
       {t(key, {
-        emoji: reaction.emoji,
+        emoji: displayReactionEmoji(reaction.emoji, lookupEmoji),
         name: reaction.actorDisplayName ?? t("transcript.reactionSomeone"),
       })}
     </div>
