@@ -16,6 +16,7 @@ import { PendingConfirmationRow } from "@/domains/chat/transcript/pending-confir
 import { PendingContactRecordRequestRow } from "@/domains/chat/transcript/pending-contact-record-request-row";
 import { PendingContactRequestRow } from "@/domains/chat/transcript/pending-contact-request-row";
 import { PendingSecretRow } from "@/domains/chat/transcript/pending-secret-row";
+import { NoResponseRow } from "@/domains/chat/transcript/no-response-row";
 import { SystemCardRow } from "@/domains/chat/transcript/system-card-row";
 import { TranscriptMessageBody } from "@/domains/chat/transcript/transcript-message-body";
 import { isInteractiveClickTarget } from "@/domains/chat/transcript/transcript-message-body-shared";
@@ -117,14 +118,22 @@ export interface TranscriptRowProps {
  * coarse pointers via tap (dismissed by tapping outside), mirroring
  * `TranscriptMessageBody`'s reveal behavior.
  */
-function CreditsUpsellMessageRow({
+/**
+ * Shell for a row that substitutes custom content for the ordinary message
+ * body while keeping the backing message's identity and affordances: the
+ * `msg-<id>` anchor deep links and programmatic scrolling locate, the
+ * `data-message-id` attribute, and the hover/coarse-pointer Inspect action.
+ */
+function SubstitutedMessageShell({
   message,
   conversationId,
   onInspectMessage,
+  children,
 }: {
   message: DisplayMessage;
   conversationId?: string | null;
   onInspectMessage?: (messageId: string) => void;
+  children: ReactNode;
 }) {
   const { wrapperRef, revealed, toggleRevealed } = useCoarsePointerReveal();
   const handleClick = (e: ReactMouseEvent<HTMLDivElement>) => {
@@ -151,7 +160,7 @@ function CreditsUpsellMessageRow({
       onClick={handleClick}
       className="group/msg flex flex-col gap-2"
     >
-      <CreditsUpsellCard />
+      {children}
       {inspectHandler && (
         <div className="h-6 overflow-hidden opacity-0 transition-opacity duration-200 ease-out group-hover/msg:opacity-100 has-[:focus-visible]:opacity-100 group-data-[revealed=true]/msg:opacity-100 motion-reduce:transition-none">
           <MessageHoverActions
@@ -162,6 +171,26 @@ function CreditsUpsellMessageRow({
         </div>
       )}
     </div>
+  );
+}
+
+function CreditsUpsellMessageRow({
+  message,
+  conversationId,
+  onInspectMessage,
+}: {
+  message: DisplayMessage;
+  conversationId?: string | null;
+  onInspectMessage?: (messageId: string) => void;
+}) {
+  return (
+    <SubstitutedMessageShell
+      message={message}
+      conversationId={conversationId}
+      onInspectMessage={onInspectMessage}
+    >
+      <CreditsUpsellCard />
+    </SubstitutedMessageShell>
   );
 }
 
@@ -200,6 +229,20 @@ export const TranscriptRow = memo(function TranscriptRow({
       if (item.message.isSystemCard) {
         return (
           <SystemCardRow message={item.message} assistantId={assistantId} />
+        );
+      }
+      // A deliberate-silence turn renders as a quiet marker with fixed copy
+      // inside the standard message shell, so deep links, scrolling, and
+      // Inspect still address the row; its stored content never shows.
+      if (item.message.isNoResponse) {
+        return (
+          <SubstitutedMessageShell
+            message={item.message}
+            conversationId={conversationId}
+            onInspectMessage={onInspectMessage}
+          >
+            <NoResponseRow />
+          </SubstitutedMessageShell>
         );
       }
       return (

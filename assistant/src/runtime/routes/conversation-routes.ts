@@ -127,6 +127,7 @@ import {
   getOrCreateConversation,
 } from "../../persistence/conversation-key-store.js";
 import { searchConversations } from "../../persistence/conversation-queries.js";
+import { isNoResponseMetadata } from "../../persistence/conversation-types.js";
 import { linkRequestLogsToMessage } from "../../persistence/llm-request-log-store.js";
 import { MEMORY_RETROSPECTIVE_FORK_SOURCE } from "../../plugins/defaults/memory/memory-retrospective-constants.js";
 import { normalizeOnboardingContext } from "../../prompts/normalize-onboarding.js";
@@ -163,6 +164,7 @@ import {
   resolveActorPrincipalIdForLocalGuardian,
 } from "../local-actor-identity.js";
 import { resolveLocalPrincipalTrustContext } from "../local-principal-trust.js";
+import { stripNoResponseMarkers } from "../no-response.js";
 import * as pendingInteractions from "../pending-interactions.js";
 import {
   publishConversationListAndMetadataChanged,
@@ -194,8 +196,6 @@ import { RouteResponse } from "./types.js";
 
 const log = getLogger("conversation-routes");
 
-/** Matches the `<no_response/>` sentinel used by channel delivery suppression. */
-const NO_RESPONSE_INLINE_RE = /<no_response\s*\/?>/g;
 const ATTACHMENT_ENTRY_RE = /^attachment:(\d+)$/;
 
 /** Rewrites a rendered `contentOrder` to reflect attachment alignment. */
@@ -997,6 +997,7 @@ export async function handleListMessages({
       {};
     let backgroundToolCompletion: ConversationMessage["backgroundToolCompletion"];
     let systemCard: boolean | undefined;
+    let noResponse: boolean | undefined;
     let providerError: ConversationMessage["providerError"];
     if (msg.metadata) {
       try {
@@ -1008,6 +1009,9 @@ export async function handleListMessages({
         // render as standalone system notices, not persona speech.
         if (isSystemCardMetadata(meta)) {
           systemCard = true;
+        }
+        if (isNoResponseMetadata(meta)) {
+          noResponse = true;
         }
         // Daemon-persisted provider-failure notices carry the classified
         // error code/category so clients can render a themed card instead
@@ -1061,6 +1065,7 @@ export async function handleListMessages({
       backgroundEventNotification: notifications.backgroundEventNotification,
       backgroundToolCompletion,
       systemCard,
+      noResponse,
       providerError,
       slackMessage,
       clientMessageId: msg.clientMessageId ?? undefined,
@@ -1175,9 +1180,7 @@ export async function handleListMessages({
         const keepIndices: number[] = [];
         const filteredSegments: string[] = [];
         for (let i = 0; i < rendered.textSegments.length; i++) {
-          const cleaned = rendered.textSegments[i]
-            .replace(NO_RESPONSE_INLINE_RE, "")
-            .trim();
+          const cleaned = stripNoResponseMarkers(rendered.textSegments[i]);
           if (cleaned.length > 0) {
             keepIndices.push(i);
             filteredSegments.push(cleaned);
@@ -1201,7 +1204,7 @@ export async function handleListMessages({
             block.type === "text"
               ? {
                   type: "text" as const,
-                  text: block.text.replace(NO_RESPONSE_INLINE_RE, "").trim(),
+                  text: stripNoResponseMarkers(block.text),
                 }
               : block,
           )
@@ -1271,6 +1274,7 @@ export async function handleListMessages({
           ? { backgroundToolCompletion: m.backgroundToolCompletion }
           : {}),
         ...(m.systemCard ? { systemCard: true } : {}),
+        ...(m.noResponse ? { noResponse: true } : {}),
         ...(m.providerError ? { providerError: m.providerError } : {}),
         ...(m.slackMessage ? { slackMessage: m.slackMessage } : {}),
       };
