@@ -669,9 +669,6 @@ export function updateDelivery(
   const now = Date.now();
 
   const setValues: Record<string, unknown> = { updatedAt: now };
-  if (updates.status !== undefined) {
-    setValues.status = updates.status;
-  }
   if (updates.destinationMessageId !== undefined) {
     setValues.destinationMessageId = updates.destinationMessageId;
   }
@@ -680,6 +677,23 @@ export function updateDelivery(
     .set(setValues)
     .where(eq(guardianRequestDeliveries.id, id))
     .run();
+
+  // `withdrawn` is the terminal per-surface receipt that a card was durably
+  // withdrawn, preserved here the same way the per-request expire preserves
+  // it: delivery recording lands its sent/failed status patch after the
+  // broadcast settles, so a decision racing that window would otherwise
+  // overwrite the receipt and re-describe an already-withdrawn card as live.
+  if (updates.status !== undefined) {
+    db.update(guardianRequestDeliveries)
+      .set({ status: updates.status, updatedAt: now })
+      .where(
+        and(
+          eq(guardianRequestDeliveries.id, id),
+          ne(guardianRequestDeliveries.status, DELIVERY_STATUS.withdrawn),
+        ),
+      )
+      .run();
+  }
 
   const row = db
     .select()
@@ -852,14 +866,15 @@ export function listPendingByConversationScope(
 /**
  * Check whether a guardian decision's conversation is in scope for a
  * request: either the request's `sourceConversationId` matches, or any
- * recorded delivery has a matching `destinationConversationId` (optionally
- * scoped by `channel`). Returns true when the decision is allowed from the
- * given conversation.
+ * recorded delivery has a matching `destinationConversationId`. Returns true
+ * when the decision is allowed from the given conversation. Deliberately not
+ * narrowed by delivery channel: `destinationConversationId` is always an
+ * internal conversation id, and every delivery's paired conversation renders
+ * the same actionable in-app card.
  */
 export function isRequestInConversationScope(
   requestId: string,
   conversationId: string,
-  channel?: string,
 ): boolean {
   const request = getGuardianRequest(requestId);
   if (!request) {
@@ -871,11 +886,7 @@ export function isRequestInConversationScope(
   }
 
   const deliveries = listDeliveries(requestId);
-  return deliveries.some(
-    (d) =>
-      d.destinationConversationId === conversationId &&
-      (!channel || d.destinationChannel === channel),
-  );
+  return deliveries.some((d) => d.destinationConversationId === conversationId);
 }
 
 // ---------------------------------------------------------------------------
