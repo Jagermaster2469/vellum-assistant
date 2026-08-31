@@ -627,6 +627,16 @@ export function useLiveVoice(
     return sessionRef.current?.client.attachImage(attachmentId) ?? false;
   }, []);
 
+  /**
+   * Park a sampled camera frame for the next turn, or unpark with `null`.
+   * Returns whether it reached the transport, which the caller may ignore: a
+   * frame dropped in the reconnect gap is replaced by the next keep a few
+   * seconds later, and unlike a photo nobody pressed anything to produce it.
+   */
+  const attachFrame = useCallback((attachmentId: string | null): boolean => {
+    return sessionRef.current?.client.attachFrame(attachmentId) ?? false;
+  }, []);
+
   const createPlayer = useCallback(
     () =>
       (optionsRef.current.createPlayer ?? (() => new LiveVoiceAudioPlayer()))(),
@@ -723,6 +733,7 @@ export function useLiveVoice(
         setOutputMuted,
         updateConfig,
         attachImage,
+        attachFrame,
       });
 
       const opts = optionsRef.current;
@@ -1226,6 +1237,7 @@ export function useLiveVoice(
                 setOutputMuted,
                 updateConfig,
                 attachImage,
+                attachFrame,
               });
               console.warn(
                 `live-voice: initial connect failed (${err.reason}); retrying ` +
@@ -1294,6 +1306,7 @@ export function useLiveVoice(
               setOutputMuted,
               updateConfig,
               attachImage,
+              attachFrame,
             });
             console.warn(
               `live-voice: transport closed (code ${info.code}); reconnecting ` +
@@ -1346,6 +1359,7 @@ export function useLiveVoice(
       setOutputMuted,
       updateConfig,
       attachImage,
+      attachFrame,
       createPlayer,
     ],
   );
