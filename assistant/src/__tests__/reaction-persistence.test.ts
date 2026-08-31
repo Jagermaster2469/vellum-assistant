@@ -106,6 +106,7 @@ function resetState(): void {
   db.run("DELETE FROM contact_channels");
   db.run("DELETE FROM contacts");
   gatewayGuardians = [];
+  _conversationMocks.clear();
 }
 
 function seedActiveMember(): void {
@@ -264,6 +265,10 @@ describe("Slack reaction event persistence", () => {
     expect(row.content).toBe("[reaction]");
 
     const envelope = JSON.parse(row.metadata!) as Record<string, unknown>;
+    // Provenance keeps the row visible to actor-scoped history loads:
+    // filterMessagesForUntrustedActor drops rows with no trust class.
+    expect(envelope.provenanceTrustClass).toBe("trusted_contact");
+    expect(envelope.provenanceSourceChannel).toBe("slack");
     const slackMetaRaw = envelope.slackMeta;
     expect(typeof slackMetaRaw).toBe("string");
 
@@ -276,6 +281,9 @@ describe("Slack reaction event persistence", () => {
     // Slack sends no thread on a reaction, so the row claims none.
     expect(slackMeta!.threadTs).toBeUndefined();
     expect(slackMeta!.displayName).toBe(SLACK_DISPLAY_NAME);
+    // Stable identity, not the sender-controlled label: the history
+    // renderer attributes the fenced line's origin by this id.
+    expect(slackMeta!.actorExternalUserId).toBe(SLACK_USER_ID);
     expect(slackMeta!.reaction).toEqual({
       emoji: "thumbsup",
       actorDisplayName: SLACK_DISPLAY_NAME,
@@ -412,6 +420,39 @@ describe("Slack reaction event persistence", () => {
       (r) => r.content === "[reaction]",
     );
     expect(rows.length).toBe(1);
+  });
+
+  test("a persisted reaction stale-marks the resident conversation", async () => {
+    const conversationId = seedStoredMessage("1700000000.111111");
+    const markHistoryStale = mock(() => {});
+    _conversationMocks.set(conversationId, {
+      markHistoryStale,
+    } as unknown as Conversation);
+
+    const resp = await handleChannelInbound(
+      buildReactionRequest("reaction:thumbsup"),
+      undefined,
+      TEST_BEARER_TOKEN,
+    );
+    expect(resp.status).toBe(200);
+    expect(markHistoryStale).toHaveBeenCalledTimes(1);
+  });
+
+  test("a duplicate reaction does not stale-mark again", async () => {
+    const conversationId = seedStoredMessage("1700000000.111111");
+    const markHistoryStale = mock(() => {});
+    _conversationMocks.set(conversationId, {
+      markHistoryStale,
+    } as unknown as Conversation);
+    const sharedExternalMessageId = `${SLACK_CHANNEL_ID}:1700000000.777777:bob`;
+    const makeReq = () =>
+      buildReactionRequest("reaction:tada", {
+        externalMessageId: sharedExternalMessageId,
+      });
+
+    await handleChannelInbound(makeReq(), undefined, TEST_BEARER_TOKEN);
+    await handleChannelInbound(makeReq(), undefined, TEST_BEARER_TOKEN);
+    expect(markHistoryStale).toHaveBeenCalledTimes(1);
   });
 
   test("reaction on the assistant's own post lands in that conversation", async () => {
