@@ -119,6 +119,7 @@ export async function runMirrorReconcile(): Promise<void> {
     const localByTypeAddress = new Map(
       db
         .select({
+          id: contactChannels.id,
           contactId: contactChannels.contactId,
           type: contactChannels.type,
           address: contactChannels.address,
@@ -156,8 +157,15 @@ export async function runMirrorReconcile(): Promise<void> {
         const local = localByTypeAddress.get(
           channelKey(channel.type, channel.address),
         );
+        // A gateway-null externalChatId means the delivery chat id was
+        // never learned (clearing one is off the upsert contract), so the
+        // mirror's value is the richer of the two and is not divergence. A
+        // divergent channel id IS: the heal adopts the gateway id (see
+        // syncChannels), so id-keyed read-backs and client PATCHes resolve
+        // directly instead of through the logical-key fallback forever.
         const diverges =
           !local ||
+          local.id !== channel.id ||
           local.contactId !== contact.id ||
           (channel.externalChatId != null &&
             local.externalChatId !== channel.externalChatId) ||
