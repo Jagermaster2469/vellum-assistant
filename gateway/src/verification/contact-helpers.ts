@@ -18,6 +18,7 @@ import { and, eq, sql } from "drizzle-orm";
 import { isBindingDemotion } from "@vellumai/gateway-client";
 
 import { getGatewayDb } from "../db/connection.js";
+import { ContactStore } from "../db/contact-store.js";
 import {
   contactChannels as gwContactChannels,
   contacts as gwContacts,
@@ -864,18 +865,29 @@ export async function upsertVerifiedContactChannel(params: {
  * existing status/policy. Used to seed contact records when new users are
  * first seen on a channel.
  *
- * - Existing channel: updates display name, external_chat_id.
- *   Status and policy live in the gateway DB and are left unchanged so
- *   blocked/revoked channels stay that way. `contactType`/`notes` are also
- *   left unchanged so guardian-authored edits are never clobbered.
- * - New channel: inserts contact + channel, classified via `contactType`
- *   (default 'human') and seeded with `notes` when provided. ACL columns
- *   (status, policy) are gateway-owned; the gateway DB seeds
- *   status='unverified', policy='allow'.
+ * Gateway-first: the gateway DB (source of truth) decides whether this
+ * `(type, address)` identity already exists, via the transactional
+ * `ContactStore.seedInboundChannel` (contact row atomic with its channel
+ * row). The assistant mirror is a best-effort identity follower of that
+ * decision, never the dedupe authority: the mirror op carries the gateway's
+ * contact/channel ids plus the classification fields, so a mirror missing
+ * the row recreates it faithfully (same ids, same `contactType`/`notes`)
+ * instead of inventing a divergent one. The daemon applies
+ * `contactType`/`notes` on mirror-row CREATE only, so guardian-authored
+ * edits on an existing mirror contact are never clobbered.
  *
- * Dual-writes to both the assistant DB (identity/info mirror) and the gateway
- * DB (ACL source of truth). Skips silently when the assistant IPC socket is
- * unavailable (test environments).
+ * - Existing channel: refreshes identity fields (canonical address casing,
+ *   external_chat_id when provided). ACL columns stay untouched so
+ *   blocked/revoked channels stay that way (`blocked` skips even the identity
+ *   refresh). The mirror op refreshes the mirror display name to the current
+ *   platform profile (unlike invite binding, which preserves a curated name);
+ *   the gateway contact name is never rewritten.
+ * - New channel: inserts contact + channel, classified via `contactType`
+ *   (default 'human') and seeded with `notes` when provided. ACL columns are
+ *   gateway-owned (status='unverified', policy='allow').
+ *
+ * The mirror write is skipped silently when the assistant IPC socket is
+ * unavailable (test environments); the gateway write happens regardless.
  */
 export async function upsertContactChannel(params: {
   sourceChannel: string;
@@ -888,80 +900,39 @@ export async function upsertContactChannel(params: {
   /** Notes seeded onto a newly created contact (e.g. bot/app provenance). */
   notes?: string;
 }): Promise<void> {
-  const { path: socketPath } = resolveIpcSocketPath("assistant");
-  if (!existsSync(socketPath)) return;
-
   const { sourceChannel, externalChatId, displayName, username } = params;
-  const now = Date.now();
   const address =
     canonicalizeInboundIdentity(sourceChannel, params.externalUserId) ??
     params.externalUserId;
   const contactDisplayName = displayName ?? username ?? address;
 
-  // Most-recently-updated mirror row wins. Socket presence was guarded above;
-  // an IPC failure propagates.
-  const existing = await lookupContactChannelIdentity({
+  const seeded = new ContactStore().seedInboundChannel({
     type: sourceChannel,
     address,
+    externalChatId,
+    displayName: contactDisplayName,
   });
-
-  if (existing) {
-    const row = { channelId: existing.id, contactId: existing.contactId };
-    // Gateway DB is the source of truth for ACL: a blocked channel stays blocked.
-    if (gatewayChannelStatus(sourceChannel, address) === "blocked") return;
-
-    // Update identity/display fields; ACL columns (status, policy) are
-    // gateway-owned and left untouched by the mirror. externalChatId is omitted
-    // when absent so the existing value is preserved. refreshDisplayName: an
-    // inbound seed intends to sync the mirror name to the current platform
-    // profile (unlike invite binding, which preserves a curated name).
-    await ipcCallAssistant("contacts_mirror_upsert_channel", {
-      body: {
-        contactId: row.contactId,
-        type: sourceChannel,
-        address,
-        externalChatId,
-        displayName: contactDisplayName,
-        refreshDisplayName: true,
-        // Inbound seed: never reparent a conflicting channel. Match the gateway
-        // insert's onConflictDoNothing so a first-seen race keeps the channel
-        // under the contact the gateway kept.
-        reassignConflictingChannels: false,
-      },
-    });
-
-    try {
-      const gwDb = getGatewayDb();
-      gwDb
-        .update(gwContactChannels)
-        .set({
-          address,
-          ...(externalChatId ? { externalChatId } : {}),
-          updatedAt: now,
-        })
-        .where(eq(gwContactChannels.id, row.channelId))
-        .run();
-    } catch (gwErr) {
-      log.warn(
-        { err: gwErr },
-        "Gateway DB contact channel update dual-write failed",
-      );
-    }
+  // Gateway DB is the source of truth for ACL: a blocked channel stays
+  // blocked, and gets no identity refresh in either store.
+  if (seeded.outcome === "blocked") {
     return;
   }
 
-  // New contact + channel. Share BOTH the gateway-generated contact id and
-  // channel id with the mirror so the two stores key the contact and channel
-  // identically (id-keyed gateway read-backs on later seed updates match). ACL
-  // columns are gateway-owned (schema defaults status='unverified',
-  // policy='allow'); the mirror contact keeps user_file NULL.
-  const contactId = crypto.randomUUID();
-  const channelId = crypto.randomUUID();
+  const { path: socketPath } = resolveIpcSocketPath("assistant");
+  if (!existsSync(socketPath)) {
+    return;
+  }
 
+  // One follower op for create and existing alike, projecting the gateway's
+  // decision: both gateway-minted ids (so the two stores key the contact and
+  // channel identically, and a mirror gap recreates the row under the same
+  // ids) plus the classification fields (applied by the daemon on mirror-row
+  // CREATE only, so a curated mirror record is never clobbered). The mirror
+  // contact keeps user_file NULL.
   await ipcCallAssistant("contacts_mirror_upsert_channel", {
     body: {
-      contactId,
-      channelId,
+      contactId: seeded.contactId,
+      channelId: seeded.channelId,
       type: sourceChannel,
       address,
       externalChatId,
@@ -969,49 +940,11 @@ export async function upsertContactChannel(params: {
       contactType: params.contactType ?? "human",
       notes: params.notes,
       refreshDisplayName: true,
-      // Inbound seed: never reparent a conflicting channel. Two first-seen
-      // events for the same (type,address) both reach this create path with
-      // different fresh contact ids; the gateway insert uses onConflictDoNothing
-      // and keeps the FIRST, so the mirror must not reparent to the second or
-      // the two stores would disagree about the channel's contact.
+      // Inbound seed: never reparent a conflicting channel. The gateway
+      // transaction kept exactly one row for this (type,address); the mirror
+      // must not steal a divergent mirror row from whichever contact holds
+      // it, or the two stores would disagree about the channel's contact.
       reassignConflictingChannels: false,
     },
   });
-
-  try {
-    const gwDb = getGatewayDb();
-    gwDb
-      .insert(gwContacts)
-      .values({
-        id: contactId,
-        displayName: contactDisplayName,
-        role: "contact",
-        createdAt: now,
-        updatedAt: now,
-      })
-      .onConflictDoNothing()
-      .run();
-    gwDb
-      .insert(gwContactChannels)
-      .values({
-        id: channelId,
-        contactId,
-        type: sourceChannel,
-        address,
-        isPrimary: false,
-        externalChatId: externalChatId ?? null,
-        status: "unverified",
-        policy: "allow",
-        interactionCount: 0,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .onConflictDoNothing()
-      .run();
-  } catch (gwErr) {
-    log.warn(
-      { err: gwErr },
-      "Gateway DB contact channel create dual-write failed",
-    );
-  }
 }
