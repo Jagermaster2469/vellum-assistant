@@ -5,10 +5,21 @@
  * finding messages by source identifiers, and managing raw payload storage.
  */
 
-import { and, desc, eq, isNotNull, like, ne, or, sql } from "drizzle-orm";
+import {
+  and,
+  desc,
+  eq,
+  isNotNull,
+  like,
+  ne,
+  notExists,
+  or,
+  sql,
+} from "drizzle-orm";
 import { v4 as uuid } from "uuid";
 
 import type { ChannelId } from "../channels/types.js";
+import type { ProviderMessageMetadata } from "../messaging/provider-message-metadata.js";
 import { readProviderMetadata } from "../messaging/read-provider-metadata.js";
 import type { SlackInboundMessageMetadata } from "../runtime/http-types.js";
 import { parseJsonSafe } from "../util/json.js";
@@ -55,6 +66,11 @@ const SLACK_LEGACY_THREAD_EVIDENCE_MAX_SCAN = 500;
  * Bounded on purpose: the scan runs on the inbound path while the gateway
  * waits for its ack, and reactions land on recent messages, so a cap costs
  * almost no recall and keeps the cost flat as the database grows.
+ *
+ * The candidate set is provenance-bearing rows with no inbound-event link
+ * (the NOT EXISTS in the query): inbound user rows carry `providerMeta` too,
+ * but the inbound-event index already resolves them, so admitting them here
+ * would only shrink the window of assistant posts the cap can reach.
  */
 const OUTBOUND_MESSAGE_ID_MAX_SCAN = 400;
 
@@ -336,6 +352,25 @@ export function findConversationByProviderMessageId(
         or(
           like(messages.metadata, '%"providerMeta"%'),
           like(messages.metadata, '%"slackMeta"%'),
+        ),
+        // Rows the inbound-event index resolves are not candidates: this
+        // lookup exists for messages `findMessageBySourceId` cannot answer
+        // (the assistant's own posts, a crash-window inbound row whose link
+        // never landed, and legacy linked rows whose event carries no
+        // source_message_id to match on), and admitting resolvable rows
+        // would burn the scan budget on messages the primary path already
+        // answers. The source-id predicate mirrors findMessageBySourceId's
+        // own match column.
+        notExists(
+          db
+            .select({ id: channelInboundEvents.id })
+            .from(channelInboundEvents)
+            .where(
+              and(
+                eq(channelInboundEvents.messageId, messages.id),
+                isNotNull(channelInboundEvents.sourceMessageId),
+              ),
+            ),
         ),
       ),
     )
@@ -706,6 +741,21 @@ export function storeInboundSlackMetadata(
   slackInbound: SlackInboundMessageMetadata,
 ): void {
   mergeRawPayload(eventId, { slackInbound });
+}
+
+/**
+ * Persist the neutral channel inbound envelope captured at ingress onto the
+ * stored payload, the non-Slack counterpart of
+ * {@link storeInboundSlackMetadata}: the retry sweep replays the turn with
+ * the SAME `channelInbound` the live path used, so the replayed row carries
+ * an identical `providerMeta` envelope. No-ops when the payload was cleared
+ * (e.g. a secret-bearing ingress), so cleared secrets are never resurrected.
+ */
+export function storeInboundChannelMetadata(
+  eventId: string,
+  channelInbound: ProviderMessageMetadata,
+): void {
+  mergeRawPayload(eventId, { channelInbound });
 }
 
 /**
