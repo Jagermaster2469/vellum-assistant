@@ -3,9 +3,9 @@
  *
  * The intercept reads the reactor's trust solely from
  * `sourceMetadata.trustVerdict` (via `actorTrustContextFromVerdict`) — no
- * local resolver, cache warm, or IPC reads. Pins the four dispositions:
- * guardian reactions route into the approval decision pipeline, contact
- * reactions are recorded but never approve, and unknown / missing / failed /
+ * local resolver, cache warm, or IPC reads. Pins the dispositions: an
+ * admitted actor's reaction is recorded against the reacted message's
+ * conversation whatever their trust class, and unknown / missing / failed /
  * contradictory verdicts drop fail-closed before any write.
  */
 import { beforeEach, describe, expect, mock, test } from "bun:test";
@@ -185,24 +185,6 @@ mock.module("../../../daemon/disk-pressure-policy.js", () => ({
   classifyDiskPressureTurnPolicy: () => ({ action: "allow" }),
 }));
 
-let guardianReplyCalls: Array<{
-  trustClass: string;
-  guardianPrincipalId: string | null | undefined;
-}> = [];
-let guardianReplyResponse: Record<string, unknown> | undefined;
-mock.module("./guardian-reply-intercept.js", () => ({
-  handleGuardianReplyIntercept: async (params: {
-    trustClass: string;
-    guardianPrincipalId: string | null | undefined;
-  }) => {
-    guardianReplyCalls.push({
-      trustClass: params.trustClass,
-      guardianPrincipalId: params.guardianPrincipalId,
-    });
-    return { response: guardianReplyResponse };
-  },
-}));
-
 import { handleReactionIntercept } from "./reaction-intercept.js";
 
 // ---------------------------------------------------------------------------
@@ -277,17 +259,14 @@ function buildParams(overrides: {
         ? { trustVerdict: overrides.trustVerdict }
         : {}),
     } as never,
-    approvalConversationGenerator: undefined,
   };
 }
 
 function expectDropped(result: Record<string, unknown>): void {
   expect(result.reaction).toBe("dropped_unknown_actor");
-  // Dropped before any write or routing: no dedup record, no transcript row,
-  // no approval-pipeline dispatch.
+  // Dropped before any write: no dedup record and no transcript row.
   expect(recordInboundCalls.length).toBe(0);
   expect(addMessageCalls).toBe(0);
-  expect(guardianReplyCalls.length).toBe(0);
 }
 
 function resetHarness(): void {
@@ -300,8 +279,6 @@ function resetHarness(): void {
   outboundTargetConversationId = null;
   outboundLookupChannels = [];
   addMessageCalls = 0;
-  guardianReplyCalls = [];
-  guardianReplyResponse = undefined;
   storedTarget = { messageId: "msg-target", conversationId: "conv-target" };
   // Default target: a user-authored row, so reactions stay passive unless
   // a test makes the target the assistant's own post.
@@ -318,9 +295,7 @@ function resetHarness(): void {
 describe("reaction intercept consumes the stamped verdict directly", () => {
   beforeEach(resetHarness);
 
-  test("guardian verdict routes the reaction into the approval decision pipeline", async () => {
-    guardianReplyResponse = { accepted: true, canonicalRouter: "applied" };
-
+  test("a guardian's reaction is a transcript row, not an approval decision", async () => {
     const result = await handleReactionIntercept(
       buildParams({
         rawSenderId: GUARDIAN_USER_ID,
@@ -328,15 +303,15 @@ describe("reaction intercept consumes the stamped verdict directly", () => {
       }),
     );
 
-    expect(guardianReplyCalls).toEqual([
-      { trustClass: "guardian", guardianPrincipalId: "principal-guardian-1" },
-    ]);
-    // Consumed as a guardian decision — short-circuits before persistence.
-    expect(result).toEqual(guardianReplyResponse);
-    expect(addMessageCalls).toBe(0);
+    // A guardian reacts like any other admitted actor: the emoji annotates
+    // the room. Approvals are answered by the card's buttons.
+    expect(result.accepted).toBe(true);
+    expect(result.reaction).toBeUndefined();
+    expect(addMessageCalls).toBe(1);
+    expect(recordInboundCalls).toEqual([{ conversationId: "conv-target" }]);
   });
 
-  test("contact verdict records the reaction; the decision pipeline self-gate ignores it", async () => {
+  test("a contact's reaction is recorded in the reacted message's conversation", async () => {
     const result = await handleReactionIntercept(
       buildParams({
         rawSenderId: MEMBER_USER_ID,
@@ -344,11 +319,6 @@ describe("reaction intercept consumes the stamped verdict directly", () => {
       }),
     );
 
-    // Dispatched with the contact class (guardian-reply-intercept self-gates
-    // on guardian), then falls through to transcript persistence.
-    expect(guardianReplyCalls).toEqual([
-      { trustClass: "trusted_contact", guardianPrincipalId: undefined },
-    ]);
     expect(result.accepted).toBe(true);
     expect(result.reaction).toBeUndefined();
     expect(addMessageCalls).toBe(1);
@@ -613,7 +583,36 @@ describe("reaction intercept consumes the stamped verdict directly", () => {
     expect(addMessageCalls).toBe(0);
   });
 
-  test("a redelivered reaction never reaches the guardian rail twice", async () => {
+  test("a reaction on a guardian card neither records nor wakes", async () => {
+    // A legacy channel delivery paired a message row before cards became
+    // projection-only, so such rows are still stored. The row is
+    // assistant-authored, so without the guardian-card gate the wake
+    // predicate would read a reaction on it as a signal addressed to the
+    // assistant. Content is shaped the way `isGuardianCardRow` reads it.
+    targetRow = {
+      role: "assistant",
+      content: [
+        {
+          type: "ui_surface",
+          surfaceId: "tool-approval-req-legacy-1",
+        },
+      ],
+    };
+
+    const result = await handleReactionIntercept(
+      buildParams({
+        rawSenderId: GUARDIAN_USER_ID,
+        trustVerdict: GUARDIAN_VERDICT,
+      }),
+    );
+
+    expect(result.reaction).toBe("dropped_guardian_card");
+    expect(dispatchedTurns.length).toBe(0);
+    expect(recordInboundCalls.length).toBe(0);
+    expect(addMessageCalls).toBe(0);
+  });
+
+  test("a redelivered reaction is answered once, before any lookup", async () => {
     const externalMessageId = `${SLACK_CHANNEL_ID}:1700000000.1:redelivered`;
     seedRecordedEvent(externalMessageId, "evt-1");
 
@@ -630,23 +629,7 @@ describe("reaction intercept consumes the stamped verdict directly", () => {
       duplicate: true,
       eventId: "evt-1",
     });
-    expect(guardianReplyCalls.length).toBe(0);
     expect(addMessageCalls).toBe(0);
-    expect(recordInboundCalls.length).toBe(0);
-  });
-
-  test("a guardian card reaction still applies when the card is not a stored message", async () => {
-    storedTarget = null;
-    guardianReplyResponse = { accepted: true, canonicalRouter: "applied" };
-
-    const result = await handleReactionIntercept(
-      buildParams({
-        rawSenderId: GUARDIAN_USER_ID,
-        trustVerdict: GUARDIAN_VERDICT,
-      }),
-    );
-
-    expect(result).toEqual(guardianReplyResponse);
     expect(recordInboundCalls.length).toBe(0);
   });
 
@@ -689,7 +672,6 @@ describe("reaction intercept consumes the stamped verdict directly", () => {
   });
 
   test("classification is verdict-only: no IPC, cache, or local-store reads", async () => {
-    guardianReplyResponse = { accepted: true, canonicalRouter: "applied" };
     await handleReactionIntercept(
       buildParams({
         rawSenderId: GUARDIAN_USER_ID,
