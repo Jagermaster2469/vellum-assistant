@@ -62,5 +62,13 @@
     "viewSourceThread": "查看来源消息串",
     "toolRequested": "已请求运行 <code>{toolName}</code>",
     "toolRequesting": "请求运行 <code>{toolName}</code>"
+  },
+  "notificationsBellEmptyState": {
+    "title": "暂无内容。",
+    "briefingRecipeTitle": "设置晨间简报",
+    "briefingRecipeMeta": "每日",
+    "briefingRecipeDescription": "你的第一条通知，明天 8:00 送达。",
+    "briefingRecipePrompt": "为我设置晨间简报：每个工作日 8:00 查看我的日历、收件箱和新闻，然后把简短的摘要发送到我的通知。",
+    "dismissBriefingRecipe": "忽略晨间简报建议"
   }
 }

@@ -62,5 +62,13 @@
     "viewSourceThread": "檢視來源討論串",
     "toolRequested": "已請求執行 <code>{toolName}</code>",
     "toolRequesting": "請求執行 <code>{toolName}</code>"
+  },
+  "notificationsBellEmptyState": {
+    "title": "尚無內容。",
+    "briefingRecipeTitle": "設定晨間簡報",
+    "briefingRecipeMeta": "每日",
+    "briefingRecipeDescription": "你的第一則通知，明天 8:00 送達。",
+    "briefingRecipePrompt": "為我設定晨間簡報：每個工作日 8:00 查看我的日曆、收件匣和新聞，然後將簡短的摘要發送到我的通知。",
+    "dismissBriefingRecipe": "忽略晨間簡報建議"
   }
 }
