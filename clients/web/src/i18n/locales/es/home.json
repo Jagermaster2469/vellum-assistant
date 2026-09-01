@@ -62,7 +62,6 @@
     "ariaLabelUnread": "Notificaciones (sin leer)",
     "heading": "Notificaciones",
     "loadFailed": "No se pudieron cargar las notificaciones.",
-    "empty": "Todavía no hay notificaciones.",
     "actionFailed": "No se pudo iniciar esa conversación. Vuelve a intentarlo."
   },
   "notificationsBellDetail": { "back": "Volver a las notificaciones" },
@@ -86,5 +85,13 @@
       "cancelled": "Cancelada",
       "leftUnverified": "Sin verificar"
     }
+  },
+  "notificationsBellEmptyState": {
+    "title": "Todavía no hay nada.",
+    "briefingRecipeTitle": "Configurar un resumen matutino",
+    "briefingRecipeMeta": "Cada día",
+    "briefingRecipeDescription": "Tu primera notificación, mañana a las 8:00.",
+    "briefingRecipePrompt": "Configúrame un resumen matutino: cada día laborable a las 8:00, revisa mi calendario, mi bandeja de entrada y las noticias, y publica un resumen breve en mis notificaciones.",
+    "dismissBriefingRecipe": "Descartar la sugerencia del resumen matutino"
   }
 }
