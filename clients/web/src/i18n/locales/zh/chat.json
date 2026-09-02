@@ -626,6 +626,9 @@
     "title": "删除对话",
     "untitled": "无标题"
   },
+  "deletedMessageRow": {
+    "label": "此消息已被删除"
+  },
   "documentAssetActions": {
     "pdfDownloadFailed": "下载PDF失败"
   },
