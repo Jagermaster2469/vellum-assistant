@@ -631,6 +631,23 @@ export interface NotificationActionEvent {
 }
 
 // ---------------------------------------------------------------------------
+// Window attention
+// ---------------------------------------------------------------------------
+
+/**
+ * Main → renderer: authoritative state of the window this renderer runs in,
+ * never another one. A conversation pop-out is its own window and reads its
+ * own state, so the main window minimizing behind it changes nothing here.
+ * Kept as three independent booleans so consumers pick their own strictness
+ * without another contract change.
+ */
+export interface WindowAttentionPayload {
+  visible: boolean;
+  focused: boolean;
+  minimized: boolean;
+}
+
+// ---------------------------------------------------------------------------
 // Bundles
 // ---------------------------------------------------------------------------
 

@@ -76,6 +76,7 @@ import type {
   VoiceActivityPhase,
   VoiceActivityStart,
   VoiceActivityState,
+  WindowAttentionPayload,
 } from "@vellumai/ipc-contract";
 
 export type {
@@ -353,6 +354,9 @@ declare global {
         ): Promise<{ success: boolean; errorMessage?: string }>;
         onAction(
           callback: (event: NotificationActionEvent) => void,
+        ): () => void;
+        onWindowAttention?(
+          callback: (payload: WindowAttentionPayload) => void,
         ): () => void;
       };
       popout?: {
