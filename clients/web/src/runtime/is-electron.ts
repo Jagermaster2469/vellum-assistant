@@ -45,6 +45,7 @@ import type {
   HotkeyEvent,
   HotkeyEventState,
   HotkeyScope,
+  HotkeySelection,
   LocalAssistantStatusResult,
   LocalListDevicesResult,
   LocalPairingPollResult,
@@ -101,6 +102,7 @@ export type {
   HotkeyEvent,
   HotkeyEventState,
   HotkeyScope,
+  HotkeySelection,
   NotificationCategory,
   PowerEvent,
   PowerEventKind,
@@ -169,6 +171,7 @@ declare global {
           setModifierHold?(
             hold: ModifierHold,
           ): Promise<ModifierHoldRegistrationResult>;
+          readFrontSelection?(): Promise<HotkeySelection | null>;
           onRegistrationChange?(
             callback: (active: boolean) => void,
           ): () => void;
