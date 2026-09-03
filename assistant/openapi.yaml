@@ -5785,8 +5785,11 @@ paths:
   /v1/contact_prompt_flags:
     post:
       operationId: contact_prompt_flags_post
-      summary: Read flags for a pending contact prompt
-      description: Returns whether the pending prompt asked the gateway to mark the submitted channel verified.
+      summary: Read a pending contact prompt's flags and binding target
+      description:
+        Returns whether a form is still parked under this id, whether the pending prompt asked the gateway to mark
+        the submitted channel verified, and the contact the parked form targets, or the name and notes it proposes for a
+        contact to create. known=false means no such form is pending, so nothing it may have targeted can be read.
       tags:
         - contacts
       requestBody:
@@ -5809,9 +5812,19 @@ paths:
               schema:
                 type: object
                 properties:
+                  known:
+                    type: boolean
+                    description: Whether a form is still parked under this requestId. False leaves the target unreadable rather than absent.
                   verify:
                     type: boolean
+                  contactId:
+                    type: string
+                  displayName:
+                    type: string
+                  notes:
+                    type: string
                 required:
+                  - known
                   - verify
                 additionalProperties: false
   /v1/contact-channels/{contactChannelId}:
@@ -6743,6 +6756,18 @@ paths:
                     Pre-check the form's 'mark verified' box. The guardian's answer on submit decides the attest, so an
                     unchecked box leaves the channel unverified.
                   type: boolean
+                contactId:
+                  description: The contact this address binds to. Fixed by the command, not by the form.
+                  type: string
+                contactDisplayName:
+                  description: That contact's current name, so the form can say where the channel is going.
+                  type: string
+                displayName:
+                  description: Proposed name for a contact this form would create. Editable in the form.
+                  type: string
+                notes:
+                  description: Proposed notes for a contact this form would create.
+                  type: string
                 timeoutMs:
                   description:
                     How long to hold the form open (ms). The caller waits slightly longer than this, so the form closing is
@@ -6772,6 +6797,10 @@ paths:
                     type: string
                   verified:
                     type: boolean
+                  notesSaved:
+                    type: boolean
+                  cancelled:
+                    type: boolean
                 required:
                   - ok
                 additionalProperties: false
@@ -6797,9 +6826,10 @@ paths:
                     - create
                     - update
                     - delete
+                    - merge
                   description: Which record write the guardian is being asked to confirm.
                 contactId:
-                  description: Target contact. Required for update and delete.
+                  description: Target contact. Required for update, delete and merge (the survivor).
                   type: string
                 currentDisplayName:
                   description:
@@ -6815,6 +6845,25 @@ paths:
                   description:
                     The target's channels, resolved by the caller, so a delete confirmation can identify the contact and show
                     what access is about to be lost.
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      type:
+                        type: string
+                      address:
+                        type: string
+                    required:
+                      - type
+                      - address
+                donorContactId:
+                  description: The contact being merged away. Present only on a merge.
+                  type: string
+                donorDisplayName:
+                  description: That contact's name, so the confirmation can say who is being absorbed.
+                  type: string
+                donorChannels:
+                  description: The channels moving to the survivor.
                   type: array
                   items:
                     type: object
@@ -6869,6 +6918,14 @@ paths:
                   notesSaved:
                     type: boolean
                   nothingWritten:
+                    type: boolean
+                  merged:
+                    type: boolean
+                  renamed:
+                    type: boolean
+                  mirrored:
+                    type: boolean
+                  cancelled:
                     type: boolean
                 required:
                   - ok
