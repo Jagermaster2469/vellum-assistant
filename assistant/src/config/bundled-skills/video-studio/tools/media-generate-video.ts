@@ -2,16 +2,16 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 import {
+  DEFAULT_VIDEO_MODEL,
+  describeVideoModels,
+  resolveVideoModel,
+} from "../../../../media/video-models.js";
+import {
   generateVideo,
   mapVideoGenError,
   VideoGenKeyMissingError,
   VideoGenNotImplementedError,
 } from "../../../../media/video-service.js";
-import {
-  DEFAULT_VIDEO_MODEL,
-  describeVideoModels,
-  resolveVideoModel,
-} from "../../../../media/video-models.js";
 import type { FileContent } from "../../../../providers/types.js";
 import { sandboxPolicy } from "../../../../tools/shared/filesystem/path-policy.js";
 import type {
