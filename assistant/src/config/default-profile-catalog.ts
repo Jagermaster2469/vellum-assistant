@@ -1,4 +1,6 @@
+import { getDb } from "../persistence/db-connection.js";
 import { ROUTING_IDENTITY_PROVIDERS } from "../providers/inference/auth.js";
+import { getConnection } from "../providers/inference/connections.js";
 import {
   catalogMaxOutputTokens,
   isModelInCatalog,
@@ -646,8 +648,14 @@ for (const [arm, model] of BALANCED_EXPERIMENT_MODELS) {
 
 // Provider choices without a named column materialize from the shared BYOK
 // templates; verify each one's resolved model lands in the catalog.
+// `openai-compatible` is exempt: its default profiles materialize from the
+// connection's declared models at resolution time (a runtime fact), so there
+// is nothing statically resolvable to check here.
 for (const provider of DEFAULT_PROVIDER_CHOICES) {
   if (isDefaultProfileProvider(provider)) {
+    continue;
+  }
+  if (provider === "openai-compatible") {
     continue;
   }
   for (const key of DEFAULT_PROFILE_KEYS) {
@@ -835,6 +843,27 @@ function defaultProfileImplForProvider(
 }
 
 /**
+ * First model id declared on a provider connection, for materializing
+ * openai-compatible default profiles. Sync and fail-open: a DB read failure
+ * or a missing row returns null so callers report an explainable gap rather
+ * than throwing through profile resolution (boot-time callers may run
+ * before migrations settle — see daemon/AGENTS.md DB readiness gating).
+ */
+function firstDeclaredModelForConnection(
+  connectionName: string | undefined,
+): string | null {
+  if (!connectionName) {
+    return null;
+  }
+  try {
+    const row = getConnection(getDb(), connectionName);
+    return row?.models?.[0]?.id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * The code-owned body a default profile name resolves to under the given
  * default provider. This is the single choke point where a default profile key
  * becomes a concrete body, so every consumer (the runtime resolver through
@@ -868,6 +897,26 @@ function defaultProfileBodyForProvider(
     return materializeProfile(managed, managed.provider);
   }
   const { provider } = defaultProvider;
+  if (provider === "openai-compatible") {
+    // A custom endpoint has no catalog intent table: its default profiles
+    // materialize from the connection's declared models. No declared model
+    // means the defaults cannot materialize — return undefined so the
+    // anchor reports an explainable gap instead of pinning an empty model
+    // id that dispatch would reject.
+    const connectionName = resolveDefaultConnectionName(defaultProvider);
+    const model = firstDeclaredModelForConnection(connectionName);
+    if (model == null) {
+      return undefined;
+    }
+    const { intent: _intent, ...rest } = BYOK_PROFILE_IMPLS[name];
+    return {
+      ...rest,
+      provider,
+      provider_connection: connectionName,
+      model,
+      source: "managed",
+    } as ProfileEntry;
+  }
   const impl = defaultProfileImplForProvider(name, provider);
   return clampMaxTokensToModelCap({
     ...materializeProfile(

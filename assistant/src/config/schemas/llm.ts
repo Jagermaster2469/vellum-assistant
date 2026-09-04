@@ -86,10 +86,13 @@ export function unknownLlmProviderIssue(provider: string): string | null {
  * default-profile matrix plus every API-key catalog provider whose personal
  * connection can serve the shared BYOK templates (fixed base URL, and a
  * non-empty catalog `defaultModel` for the intent fallback in
- * `resolveModelIntent`). Deliberately narrower than `LLMProvider`: keyless
- * (ollama) and endpoint-supplied (openai-compatible, litellm, opencode)
- * providers have
- * no code-resolvable default profile implementation.
+ * `resolveModelIntent`). Deliberately narrower than `LLMProvider` for the
+ * catalog-backed providers: keyless (ollama) and endpoint-supplied
+ * (litellm, opencode) providers have no code-resolvable default profile
+ * implementation. `openai-compatible` is the exception: it is admitted so
+ * a custom OpenAI-compatible connection can back the workspace default —
+ * its default profiles materialize from the connection's declared models
+ * (see `default-profile-catalog.ts`), not from the catalog.
  */
 export const DEFAULT_PROVIDER_CHOICES: readonly LLMProvider[] = [
   ...new Set<LLMProvider>([
@@ -97,8 +100,9 @@ export const DEFAULT_PROVIDER_CHOICES: readonly LLMProvider[] = [
     ...PROVIDER_CATALOG.filter(
       (entry) =>
         entry.setupMode === "api-key" &&
-        !PROVIDERS_REQUIRING_BASE_URL_AND_MODELS.has(entry.id) &&
-        entry.defaultModel !== "",
+        (!PROVIDERS_REQUIRING_BASE_URL_AND_MODELS.has(entry.id) ||
+          entry.id === "openai-compatible") &&
+        (entry.defaultModel !== "" || entry.id === "openai-compatible"),
     )
       .map((entry) => entry.id)
       // A catalog provider outside the known provider set cannot be
@@ -675,6 +679,13 @@ export type ProfileEntry = z.infer<typeof ProfileEntry>;
  */
 const LLMCallSiteConfig = LLMConfigFragment.extend({
   profile: z.string().min(1).optional(),
+  /**
+   * Name of a `provider_connections` row for this call site. Optional and
+   * additive: when set, the resolver threads it into the resolved config so
+   * a call site can pin a custom-endpoint connection directly (e.g. vision
+   * on a local OpenAI-compatible endpoint) without a named profile.
+   */
+  provider_connection: z.string().min(1).optional(),
 });
 type LLMCallSiteConfig = z.infer<typeof LLMCallSiteConfig>;
 

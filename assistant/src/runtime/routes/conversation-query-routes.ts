@@ -102,7 +102,11 @@ import { type LogRow } from "../../persistence/llm-request-log-store.js";
 import { getMemoryRecallLogByMessageIds } from "../../plugins/defaults/memory/memory-recall-log-store.js";
 import { getMemoryV2ActivationLogByMessageIds } from "../../plugins/defaults/memory/v2/activation-log-store.js";
 import { getMemoryV3SelectionForInspectorByMessageIds } from "../../plugins/defaults/memory/v3/selection-log-store.js";
-import { writableProfileProviderIssue } from "../../providers/connection-resolution.js";
+import {
+  resolveEntryConnectionName,
+  resolveEntryProviderKind,
+  writableProfileProviderIssue,
+} from "../../providers/connection-resolution.js";
 import { ROUTING_IDENTITY_PROVIDERS } from "../../providers/inference/auth.js";
 import { PROVIDERS_REQUIRING_BASE_URL_AND_MODELS } from "../../providers/inference/auth.js";
 import {
@@ -1310,12 +1314,53 @@ function completeChangedCustomProfiles(
     // depth: `safeParse` strips keys the schema doesn't know (top-level and
     // inside nested objects like `contextWindow`), and dropping them here
     // would delete forward-compatible fields whenever the entry is edited.
+    const completed = completeCustomProfile(
+      parsedDefault.data,
+      entryData,
+    ) as Record<string, unknown>;
+    // Custom-endpoint models: a model that is neither in the provider
+    // catalog nor declared on the profile's connection must carry the
+    // `allowUnlisted` stamp — without it every listing reports a permanent
+    // `model_unknown` config issue. The CLI create/update routes already
+    // accept the flag explicitly; the web save path never sent it, which is
+    // why custom-endpoint profiles "eventually error" in the UI. Stamp it
+    // here so both write surfaces agree. DB-unavailable or entry-name
+    // resolution failures fall back to the prior behavior (no stamp).
+    if (
+      typeof completed.provider === "string" &&
+      typeof completed.model === "string" &&
+      completed.allowUnlisted !== true
+    ) {
+      const kind =
+        resolveEntryProviderKind(completed.provider, completed.model) ??
+        completed.provider;
+      if (kind === "openai-compatible") {
+        let declaredOnConnection = false;
+        try {
+          const connectionName =
+            typeof completed.provider_connection === "string"
+              ? completed.provider_connection
+              : (resolveEntryConnectionName(completed.provider) ?? undefined);
+          if (connectionName) {
+            const row = getConnection(getDb(), connectionName);
+            declaredOnConnection =
+              row?.models?.some((m) => m.id === (completed.model as string)) ??
+              false;
+          }
+        } catch {
+          // Skip stamping on DB unavailability.
+        }
+        const inCatalog = PROVIDER_CATALOG.some((p) =>
+          p.models.some((m) => m.id === completed.model),
+        );
+        if (!declaredOnConnection && !inCatalog) {
+          completed.allowUnlisted = true;
+        }
+      }
+    }
     profiles[name] = mergePreservingUnknownKeys(
       readPlainObject(entry) ?? {},
-      completeCustomProfile(parsedDefault.data, entryData) as Record<
-        string,
-        unknown
-      >,
+      completed,
     );
   }
 }

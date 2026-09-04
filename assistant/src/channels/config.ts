@@ -99,6 +99,19 @@ const CHANNEL_POLICIES = {
       conversationStrategy: "continue_existing_conversation",
     },
   },
+  buzz: {
+    notification: {
+      // Buzz lands with the gateway relay-socket channel (T023 in
+      // specs/001-provider-freedom/tasks.md). Until the guardian binding
+      // resolver exists, proactive delivery is off — same rationale as the
+      // plugin row: enabling it would let the decision engine pick a channel
+      // that resolves to nothing. Flip to true (and add the exhaustive
+      // switch cases in destination-resolver/emit-signal) when the channel
+      // ships.
+      deliveryEnabled: false,
+      conversationStrategy: "continue_existing_conversation",
+    },
+  },
 } as const satisfies Record<ChannelId, ChannelNotificationPolicy>;
 
 export type ChannelPolicies = typeof CHANNEL_POLICIES;

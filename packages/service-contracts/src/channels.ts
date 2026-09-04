@@ -40,6 +40,7 @@ export const CHANNEL_IDS = [
   "platform",
   "a2a",
   "discord",
+  "buzz",
   "plugin",
 ] as const;
 
