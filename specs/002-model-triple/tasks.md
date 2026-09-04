@@ -15,7 +15,7 @@
 - [x] T007 Image `openai-compatible` provider + keyless-local
 - [x] T008 TTS `openai` provider (schema + catalog + adapter with apiBase/model/key triple)
 - [ ] T009 STT generic `openai-compatible` as first-class provider id (currently via `openai-whisper` + baseUrl; expose alias in UI)
-- [ ] T010 Video generic endpoint docs + UI (adapter already supports apiBase/model/key for xAI shape)
+- [x] T010 Video `openai-compatible` provider (xAI-shaped async API, openai key, keyless-local; tsgo+lint green)
 
 ## Phase 3: Verify + docs + UI
 - [x] T011 `assistant/scripts/verify-triples.ts` (per-function endpoint/model/key presence, keys redacted; ran offline OK)
