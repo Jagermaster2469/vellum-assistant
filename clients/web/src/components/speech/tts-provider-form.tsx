@@ -63,6 +63,29 @@ const TTS_VOICE_CONFIG_FIELD: Record<
   openai: "voice",
 };
 
+const TTS_MODEL_CONFIG_FIELD: Record<string, string> = {
+  elevenlabs: "voiceModelId",
+  deepgram: "model",
+  xai: "model",
+  openai: "model",
+};
+
+function modelForProviderConfig(
+  providerId: string,
+  config:
+    | {
+        model?: string;
+        voiceModelId?: string;
+      }
+    | undefined,
+): string {
+  const field = TTS_MODEL_CONFIG_FIELD[providerId];
+  if (field === "voiceModelId") {
+    return config?.voiceModelId ?? "";
+  }
+  return config?.model ?? "";
+}
+
 export interface TtsProviderFormProps {
   /**
    * Assistant to configure. Defaults to the active assistant — pass it
@@ -134,7 +157,16 @@ export function TtsProviderForm({
     | {
         provider?: string;
         mode?: string;
-        providers?: { vellum?: { model?: string } };
+        providers?: Record<
+          string,
+          {
+            model?: string;
+            apiBase?: string;
+            voice?: string;
+            voiceId?: string;
+            referenceId?: string;
+          }
+        >;
       }
     | undefined;
   // A config written by the legacy mode toggle marks managed via `mode` while
@@ -156,6 +188,8 @@ export function TtsProviderForm({
   const [draftProvider, setDraftProvider] = useDraftOverride(serverProvider);
   const [apiKeyText, setApiKeyText] = useState("");
   const [voiceIdText, setVoiceIdText] = useState("");
+  const [baseUrlText, setBaseUrlText] = useState("");
+  const [modelText, setModelText] = useState("");
   const [initialVoiceId, setInitialVoiceId] = useState("");
   const [providerHasKey, setProviderHasKey] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -197,7 +231,15 @@ export function TtsProviderForm({
 
   const selectedProvider = useMemo(() => {
     return providers.find((p) => p.id === draftProvider) ?? providers[0]!;
-  }, [draftProvider, providers]);
+  }, [providers, draftProvider]);
+
+  const activeTtsConfig = daemonTts?.providers?.[draftProvider];
+  const serverBaseUrl = activeTtsConfig?.apiBase ?? "";
+  const supportsCustomBaseUrl = draftProvider !== "vellum";
+  const hasBaseUrlChanges = baseUrlText.trim() !== serverBaseUrl.trim();
+  const serverModel = modelForProviderConfig(draftProvider, activeTtsConfig);
+  const supportsModelField = Boolean(TTS_MODEL_CONFIG_FIELD[draftProvider]);
+  const modelChanged = modelText.trim() !== serverModel.trim();
 
   // Written to config only when true: never writing on an untouched default
   // keeps "unset = platform default" configs unset, and daemons that predate
@@ -210,17 +252,24 @@ export function TtsProviderForm({
     draftManagedVoice.trim() !== "" &&
     draftManagedVoice.trim() !== serverManagedVoice;
 
-  const loadProviderState = useCallback((providerId: string) => {
-    const storedKey = getLocalSetting(LS_TTS_API_KEY_PREFIX + providerId, "");
-    const storedVoiceId = getLocalSetting(
-      LS_TTS_VOICE_ID_PREFIX + providerId,
-      "",
-    );
-    setProviderHasKey(storedKey.length > 0);
-    setVoiceIdText(storedVoiceId);
-    setInitialVoiceId(storedVoiceId);
-    setApiKeyText("");
-  }, []);
+  const loadProviderState = useCallback(
+    (providerId: string) => {
+      const storedKey = getLocalSetting(LS_TTS_API_KEY_PREFIX + providerId, "");
+      const storedVoiceId = getLocalSetting(
+        LS_TTS_VOICE_ID_PREFIX + providerId,
+        "",
+      );
+      const configProvider = daemonTts?.providers?.[providerId];
+      const configBaseUrl = configProvider?.apiBase ?? "";
+      setProviderHasKey(storedKey.length > 0);
+      setVoiceIdText(storedVoiceId);
+      setInitialVoiceId(storedVoiceId);
+      setApiKeyText("");
+      setBaseUrlText(configBaseUrl);
+      setModelText(modelForProviderConfig(providerId, configProvider));
+    },
+    [daemonTts?.providers],
+  );
 
   useEffect(() => {
     loadProviderState(draftProvider);
@@ -231,7 +280,12 @@ export function TtsProviderForm({
     const hasNewKey = apiKeyText.trim().length > 0;
     const voiceIdChanged = voiceIdText.trim() !== initialVoiceId;
     return (
-      providerChanged || hasNewKey || voiceIdChanged || managedVoiceChanged
+      providerChanged ||
+      hasNewKey ||
+      voiceIdChanged ||
+      managedVoiceChanged ||
+      hasBaseUrlChanges ||
+      modelChanged
     );
   }, [
     draftProvider,
@@ -240,11 +294,14 @@ export function TtsProviderForm({
     voiceIdText,
     initialVoiceId,
     managedVoiceChanged,
+    hasBaseUrlChanges,
+    modelChanged,
   ]);
 
   const handleSave = useCallback(async (): Promise<boolean> => {
     const trimmedKey = apiKeyText.trim();
     const trimmedVoiceId = voiceIdText.trim();
+    const trimmedBaseUrl = baseUrlText.trim();
 
     // The provider everything is saved under. Matches draftProvider except
     // when the daemon reports one the dropdown can't represent — then it is
@@ -268,6 +325,8 @@ export function TtsProviderForm({
         ? trimmedKey
         : getLocalSetting(LS_TTS_API_KEY_PREFIX + activeProvider, "");
     const voiceField = TTS_VOICE_CONFIG_FIELD[activeProvider];
+    const modelField = TTS_MODEL_CONFIG_FIELD[activeProvider];
+    const activeModel = modelText.trim();
 
     setSaving(true);
     try {
@@ -307,9 +366,25 @@ export function TtsProviderForm({
           : {}),
         ...(voiceField
           ? {
-              providers: { [activeProvider]: { [voiceField]: trimmedVoiceId } },
+              providers: {
+                [activeProvider]: {
+                  [voiceField]: trimmedVoiceId,
+                  ...(supportsCustomBaseUrl && hasBaseUrlChanges
+                    ? { apiBase: trimmedBaseUrl || undefined }
+                    : {}),
+                  ...(modelField && activeModel
+                    ? { [modelField]: activeModel }
+                    : {}),
+                },
+              },
             }
-          : {}),
+          : supportsCustomBaseUrl && hasBaseUrlChanges
+            ? {
+                providers: {
+                  [activeProvider]: { apiBase: trimmedBaseUrl || undefined },
+                },
+              }
+            : {}),
         ...(managedVoiceChanged
           ? { providers: { vellum: { model: draftManagedVoice.trim() } } }
           : {}),
@@ -350,6 +425,10 @@ export function TtsProviderForm({
     managedVoiceChanged,
     apiKeyText,
     voiceIdText,
+    baseUrlText,
+    supportsCustomBaseUrl,
+    hasBaseUrlChanges,
+    modelText,
     selectedProvider,
     serverProvider,
     daemonHasProvider,
@@ -493,6 +572,28 @@ export function TtsProviderForm({
             fullWidth
           />
         </div>
+      )}
+
+      {supportsCustomBaseUrl && (
+        <Input
+          label={t("ttsProviderForm.baseUrlLabel")}
+          type="url"
+          value={baseUrlText}
+          onChange={(e) => setBaseUrlText(e.target.value)}
+          placeholder={t("ttsProviderForm.baseUrlPlaceholder")}
+          fullWidth
+        />
+      )}
+
+      {supportsModelField && (
+        <Input
+          label={t("ttsProviderForm.modelLabel")}
+          type="text"
+          value={modelText}
+          onChange={(e) => setModelText(e.target.value)}
+          placeholder={serverModel || t("ttsProviderForm.modelPlaceholder")}
+          fullWidth
+        />
       )}
 
       {managedVoiceSupported && (

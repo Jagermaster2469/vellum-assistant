@@ -172,6 +172,13 @@ describe("TextToSpeechCard — daemon provisioning on Save", () => {
     fireEvent.change(screen.getByPlaceholderText("Enter a voice ID"), {
       target: { value: "alloy" },
     });
+    fireEvent.change(screen.getByPlaceholderText("Enter a model ID"), {
+      target: { value: "local-tts-model" },
+    });
+    fireEvent.change(
+      screen.getByPlaceholderText("https://your-endpoint.example.com/v1"),
+      { target: { value: "http://127.0.0.1:8000/v1" } },
+    );
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await waitFor(() => expect(configPatchCalls.length).toBe(1));
@@ -185,7 +192,13 @@ describe("TextToSpeechCard — daemon provisioning on Save", () => {
       services: {
         tts: {
           provider: "openai",
-          providers: { openai: { voice: "alloy" } },
+          providers: {
+            openai: {
+              voice: "alloy",
+              model: "local-tts-model",
+              apiBase: "http://127.0.0.1:8000/v1",
+            },
+          },
         },
       },
     });

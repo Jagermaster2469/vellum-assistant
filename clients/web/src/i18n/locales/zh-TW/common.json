@@ -721,7 +721,11 @@
     "testing": "正在測試…",
     "voice": "語音",
     "voiceId": "語音 ID",
-    "voiceIdPlaceholder": "輸入語音 ID"
+    "voiceIdPlaceholder": "輸入語音 ID",
+    "baseUrlLabel": "API 基礎網址",
+    "baseUrlPlaceholder": "https://your-endpoint.example.com/v1",
+    "modelLabel": "模型",
+    "modelPlaceholder": "輸入模型 ID"
   },
   "updateToast": {
     "available": "有可用的更新。正在開始下載…",

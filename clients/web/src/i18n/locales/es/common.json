@@ -721,7 +721,11 @@
     "testing": "Probando…",
     "voice": "Voz",
     "voiceId": "ID de voz",
-    "voiceIdPlaceholder": "Introduce un ID de voz"
+    "voiceIdPlaceholder": "Introduce un ID de voz",
+    "baseUrlLabel": "Base de la API",
+    "baseUrlPlaceholder": "https://tu-endpoint.ejemplo.com/v1",
+    "modelLabel": "Modelo",
+    "modelPlaceholder": "Escribe un ID de modelo"
   },
   "updateToast": {
     "available": "Actualización disponible. Iniciando descarga…",

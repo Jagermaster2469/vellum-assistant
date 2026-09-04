@@ -723,7 +723,11 @@
     "testing": "Testing…",
     "voice": "Voice",
     "voiceId": "Voice ID",
-    "voiceIdPlaceholder": "Enter a voice ID"
+    "voiceIdPlaceholder": "Enter a voice ID",
+    "baseUrlLabel": "API Base",
+    "baseUrlPlaceholder": "https://your-endpoint.example.com/v1",
+    "modelLabel": "Model",
+    "modelPlaceholder": "Enter a model ID"
   },
   "updateToast": {
     "available": "Update available. Starting download…",

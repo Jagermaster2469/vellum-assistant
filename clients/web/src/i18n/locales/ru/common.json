@@ -230,5 +230,11 @@
   "detailPrimitives": {
     "showLess": "Показать меньше",
     "showMore": "Показать больше"
+  },
+  "ttsProviderForm": {
+    "baseUrlLabel": "Ссылка на API",
+    "baseUrlPlaceholder": "https://your-endpoint.example.com/v1",
+    "modelLabel": "Модель",
+    "modelPlaceholder": "Введите ID модели"
   }
 }

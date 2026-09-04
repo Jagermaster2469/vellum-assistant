@@ -254,6 +254,11 @@ export const TtsXaiProviderConfigSchema = z
       .describe(
         "xAI voice ID — one of: eve, ara, rex, sal, leo (case-insensitive)",
       ),
+    model: z
+      .string({
+        error: "services.tts.providers.xai.model must be a string",
+      })
+      .default("grok-tts"),
     language: z
       .string({
         error: "services.tts.providers.xai.language must be a string",
