@@ -22,7 +22,12 @@ export const VALID_INFERENCE_PROVIDERS = [
 
 // `vellum` generates through the platform runtime proxy; the backend
 // (gemini/openai) derives from the selected model's prefix at request time.
-const VALID_IMAGE_GEN_PROVIDERS = ["vellum", "gemini", "openai"] as const;
+const VALID_IMAGE_GEN_PROVIDERS = [
+  "vellum",
+  "gemini",
+  "openai",
+  "openai-compatible",
+] as const;
 
 /**
  * Derived from `SEARCH_PROVIDER_CATALOG`. Adding a new web-search provider
@@ -96,6 +101,10 @@ const WebSearchServiceSchema = z.object({
   // Origin for providers that support a custom API base (e.g. fastCRW).
   // Empty / omitted uses the provider's cloud default.
   apiBase: z.string().optional(),
+  // Model for LLM-backed search providers (e.g. Perplexity `sonar`).
+  // Empty / omitted uses the provider default. Part of the per-function
+  // triple: endpoint (apiBase) + model + key (provider key in vault).
+  model: z.string().optional(),
 });
 
 /**

@@ -4,6 +4,7 @@ export const VALID_MEMORY_EMBEDDING_PROVIDERS = [
   "auto",
   "local",
   "openai",
+  "openai-compatible",
   "gemini",
   "ollama",
 ] as const;

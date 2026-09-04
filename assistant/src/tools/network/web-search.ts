@@ -955,7 +955,11 @@ async function executePerplexitySearch(
             Authorization: `Bearer ${apiKey}`,
           },
           body: JSON.stringify({
-            model: "sonar",
+            // Per-function triple: model now comes from
+            // `services["web-search"].model` when set (falls back to the
+            // Perplexity default `sonar`). Endpoint = apiBase via
+            // `resolveWebSearchApiUrl`; key = perplexity vault/env key.
+            model: getConfig().services["web-search"]?.model?.trim() || "sonar",
             messages: [{ role: "user", content: query }],
           }),
           signal,

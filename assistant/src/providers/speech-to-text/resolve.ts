@@ -674,12 +674,13 @@ async function createStreamingTranscriber(
     case "openai-whisper": {
       // OpenAI Whisper does not support speaker diarization; the diarize
       // option is silently ignored here. The incremental-batch streaming
-      // adapter also takes no base URL option, so `services.stt.baseUrl`
-      // is ignored on this path (batch transcription still honors it).
+      // adapter forwards `services.stt.baseUrl` to its batch chunks
+      // (see OpenAIWhisperStreamOptions.baseUrl).
       const { OpenAIWhisperStreamingTranscriber } =
         await import("./openai-whisper-stream.js");
       return new OpenAIWhisperStreamingTranscriber(apiKey, {
         pcmSampleRate: options.sampleRate,
+        ...(options.baseUrl ? { baseUrl: options.baseUrl } : {}),
       });
     }
     case "xai": {

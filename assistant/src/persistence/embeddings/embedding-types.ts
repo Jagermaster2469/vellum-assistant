@@ -75,7 +75,12 @@ export function embeddingInputContentHash(input: EmbeddingInput): string {
 // circular imports between the factory and provider implementations)
 // ---------------------------------------------------------------------------
 
-export type EmbeddingProviderName = "local" | "openai" | "gemini" | "ollama";
+export type EmbeddingProviderName =
+  | "local"
+  | "openai"
+  | "openai-compatible"
+  | "gemini"
+  | "ollama";
 
 export interface EmbeddingRequestOptions {
   signal?: AbortSignal;

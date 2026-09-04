@@ -12,16 +12,24 @@ import {
 } from "./incremental-batch-stream.js";
 import { whisperTranscribe } from "./openai-whisper.js";
 
-export type OpenAIWhisperStreamOptions = IncrementalBatchStreamOptions;
+export interface OpenAIWhisperStreamOptions extends IncrementalBatchStreamOptions {
+  /**
+   * Custom STT origin (`services.stt.baseUrl`). When set, batch chunks go to
+   * `${baseUrl}/v1/audio/transcriptions` instead of the OpenAI cloud default.
+   */
+  baseUrl?: string;
+}
 
 export class OpenAIWhisperStreamingTranscriber extends IncrementalBatchStreamingTranscriber {
   readonly providerId = "openai-whisper" as const;
 
   private readonly apiKey: string;
+  private readonly baseUrl: string | undefined;
 
-  constructor(apiKey: string, options: IncrementalBatchStreamOptions = {}) {
+  constructor(apiKey: string, options: OpenAIWhisperStreamOptions = {}) {
     super(options);
     this.apiKey = apiKey;
+    this.baseUrl = options.baseUrl;
   }
 
   protected runBatchTranscription(
@@ -29,6 +37,12 @@ export class OpenAIWhisperStreamingTranscriber extends IncrementalBatchStreaming
     mimeType: string,
     signal: AbortSignal,
   ): Promise<string> {
-    return whisperTranscribe(this.apiKey, audio, mimeType, signal);
+    return whisperTranscribe(
+      this.apiKey,
+      audio,
+      mimeType,
+      signal,
+      this.baseUrl,
+    );
   }
 }

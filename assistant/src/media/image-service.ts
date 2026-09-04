@@ -20,6 +20,7 @@ export function generateImage(
 ): Promise<ImageGenerationResult> {
   switch (provider) {
     case "openai":
+    case "openai-compatible":
       return generateImageOpenAI(credentials, request);
     case "gemini":
       return generateImageGemini(credentials, request);
@@ -39,6 +40,7 @@ export function mapImageGenError(
 ): string {
   switch (provider) {
     case "openai":
+    case "openai-compatible":
       return mapOpenAIError(error);
     case "gemini":
       return mapGeminiError(error);

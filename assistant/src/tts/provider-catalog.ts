@@ -24,6 +24,7 @@ import type {
 import { deepgramTtsProviderDefinition } from "./providers/deepgram-provider.js";
 import { elevenLabsTtsProviderDefinition } from "./providers/elevenlabs-provider.js";
 import { fishAudioTtsProviderDefinition } from "./providers/fish-audio-provider.js";
+import { openAiTtsProviderDefinition } from "./providers/openai-provider.js";
 import { vellumTtsProviderDefinition } from "./providers/vellum-provider.js";
 import { xaiTtsProviderDefinition } from "./providers/xai-provider.js";
 import type { TtsProvider, TtsProviderId } from "./types.js";
@@ -48,6 +49,7 @@ const DEFINITIONS = {
   "fish-audio": fishAudioTtsProviderDefinition,
   deepgram: deepgramTtsProviderDefinition,
   xai: xaiTtsProviderDefinition,
+  openai: openAiTtsProviderDefinition,
   vellum: vellumTtsProviderDefinition,
 } as const satisfies Record<TtsProviderId, TtsProviderDefinition>;
 
@@ -61,6 +63,7 @@ const CATALOG: readonly TtsProviderDefinition[] = [
   DEFINITIONS["fish-audio"],
   DEFINITIONS.deepgram,
   DEFINITIONS.xai,
+  DEFINITIONS.openai,
 ];
 
 // ---------------------------------------------------------------------------

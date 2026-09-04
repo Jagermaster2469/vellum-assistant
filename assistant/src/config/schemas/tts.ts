@@ -308,6 +308,47 @@ export const TtsXaiProviderConfigSchema = z
 export type TtsXaiProviderConfig = z.infer<typeof TtsXaiProviderConfigSchema>;
 
 /**
+ * OpenAI-compatible provider configuration under `services.tts.providers`.
+ *
+ * Triple: endpoint = `apiBase` (cloud default when unset), model = `model`,
+ * key = `openai` vault key (`credential/openai/api_key`, env fallback).
+ * Keyless-local endpoints (Ollama/vLLM/LM Studio on localhost) work with
+ * no stored key — the adapter omits the Authorization header.
+ */
+export const TtsOpenAiProviderConfigSchema = z
+  .object({
+    voice: z
+      .string({
+        error: "services.tts.providers.openai.voice must be a string",
+      })
+      .default("alloy")
+      .describe("OpenAI voice ID for text-to-speech (alloy, echo, nova, …)"),
+    model: z
+      .string({
+        error: "services.tts.providers.openai.model must be a string",
+      })
+      .default("gpt-4o-mini-tts")
+      .describe(
+        "OpenAI TTS model ID (leave default unless the endpoint needs another)",
+      ),
+    // Custom API base for BYOK deployments (e.g. a self-hosted or proxy
+    // endpoint). Empty / omitted uses the provider's cloud default.
+    apiBase: z
+      .string({
+        error: "services.tts.providers.openai.apiBase must be a string",
+      })
+      .optional()
+      .describe(
+        "Custom API base URL for OpenAI-compatible TTS. Empty / omitted uses the provider's cloud default.",
+      ),
+  })
+  .describe("OpenAI-compatible provider configuration under services.tts");
+
+export type TtsOpenAiProviderConfig = z.infer<
+  typeof TtsOpenAiProviderConfigSchema
+>;
+
+/**
  * Vellum managed provider configuration under `services.tts.providers`.
  */
 const TtsVellumProviderConfigSchema = z
@@ -343,6 +384,9 @@ const TtsProvidersSchema = z.object({
     TtsDeepgramProviderConfigSchema.parse({}),
   ),
   xai: TtsXaiProviderConfigSchema.default(TtsXaiProviderConfigSchema.parse({})),
+  openai: TtsOpenAiProviderConfigSchema.default(
+    TtsOpenAiProviderConfigSchema.parse({}),
+  ),
   vellum: TtsVellumProviderConfigSchema.default(
     TtsVellumProviderConfigSchema.parse({}),
   ),

@@ -564,19 +564,28 @@ export async function selectEmbeddingBackend(
           ),
           reason: null,
         };
-      case "openai": {
+      case "openai":
+      case "openai-compatible": {
         const openaiKey = await getProviderKeyAsync("openai");
+        // Keyless-local: a custom apiBase on localhost may not need a key
+        // (Ollama/LM Studio/vLLM OpenAI servers). When no key is stored and
+        // the endpoint is local, still build the backend with an empty key —
+        // the OpenAI SDK omits the Authorization header when apiKey is "".
         if (!openaiKey) {
-          // Preserve cached backend on transient credential-store failures.
-          // Explicit key deletion clears the cache via clearEmbeddingBackendCache().
-          const cached = getCached(
-            "openai",
-            config.memory.embeddings.openaiModel,
-          );
-          if (cached) {
-            return { backend: cached, reason: null };
+          const keylessLocal =
+            provider === "openai-compatible" &&
+            Boolean(resolveEmbeddingsApiBase(config));
+          if (!keylessLocal) {
+            // Preserve cached backend on transient credential-store failures.
+            const cached = getCached(
+              "openai",
+              config.memory.embeddings.openaiModel,
+            );
+            if (cached) {
+              return { backend: cached, reason: null };
+            }
+            continue;
           }
-          continue;
         }
         return {
           backend: getCachedOrCreate(
@@ -584,7 +593,7 @@ export async function selectEmbeddingBackend(
             config.memory.embeddings.openaiModel,
             () =>
               new OpenAIEmbeddingBackend(
-                openaiKey,
+                openaiKey ?? "",
                 config.memory.embeddings.openaiModel,
                 resolveEmbeddingsApiBase(config),
               ),
@@ -1001,7 +1010,8 @@ async function selectFallbackBackends(
       continue;
     }
     switch (provider) {
-      case "openai": {
+      case "openai":
+      case "openai-compatible": {
         const openaiKey = await getProviderKeyAsync("openai");
         if (openaiKey) {
           backends.push(
@@ -1011,6 +1021,23 @@ async function selectFallbackBackends(
               () =>
                 new OpenAIEmbeddingBackend(
                   openaiKey,
+                  config.memory.embeddings.openaiModel,
+                  resolveEmbeddingsApiBase(config),
+                ),
+            ),
+          );
+        } else if (
+          provider === "openai-compatible" &&
+          resolveEmbeddingsApiBase(config)
+        ) {
+          // Keyless-local compatible endpoint (Ollama/vLLM/LM Studio).
+          backends.push(
+            getCachedOrCreate(
+              "openai",
+              config.memory.embeddings.openaiModel,
+              () =>
+                new OpenAIEmbeddingBackend(
+                  "",
                   config.memory.embeddings.openaiModel,
                   resolveEmbeddingsApiBase(config),
                 ),

@@ -96,7 +96,12 @@ export async function resolveImageGenCredentials(opts: {
     };
   }
 
-  const apiKey = await getProviderKeyAsync(provider);
+  // "openai-compatible" uses the stored OpenAI key (or keyless-local when the
+  // endpoint is on localhost and no key is stored). The backend dispatches to
+  // the OpenAI-compatible image path (same SDK, custom baseURL).
+  const keyProviderName =
+    provider === "openai-compatible" ? "openai" : provider;
+  const apiKey = await getProviderKeyAsync(keyProviderName);
   if (apiKey) {
     // `apiBase` only applies to direct (BYOK) calls; managed proxying is
     // resolved above and never consults it.
@@ -105,6 +110,10 @@ export async function resolveImageGenCredentials(opts: {
         ? { type: "direct", apiKey, apiBase }
         : { type: "direct", apiKey },
     };
+  }
+  if (provider === "openai-compatible" && apiBase) {
+    // Keyless-local compatible endpoint (Ollama/vLLM/LM Studio on localhost).
+    return { credentials: { type: "direct", apiKey: "", apiBase } };
   }
   return { errorHint: providerKeyHint(provider) };
 }
@@ -127,6 +136,7 @@ function providerKeyHint(provider: ImageGenProvider): string {
     case "gemini":
       return "No Gemini API key configured. Please set your Gemini API key in Settings → Models & Services.";
     case "openai":
+    case "openai-compatible":
       return "No OpenAI API key configured. Please set your OpenAI API key in Settings → Models & Services.";
   }
 }
