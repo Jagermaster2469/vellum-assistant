@@ -212,6 +212,18 @@ export async function initializeProviders(
     ) {
       continue;
     }
+    // `openai-compatible` has no catalog default model and no fixed endpoint:
+    // every usable route runs through a `provider_connections` row resolved
+    // at dispatch time (resolveProviderFromConnection builds the adapter with
+    // the row's baseUrl and declared models). Boot-registering it here would
+    // build a degenerate adapter — `resolveModel` falls back to the catalog
+    // `defaultModel` of "" and `resolveProviderCredentials` never sees the
+    // connection's baseUrl, so the OpenAI SDK would point at api.openai.com.
+    // Skip it: connection-dispatch is the only correct path for custom
+    // endpoints.
+    if (entry.id === "openai-compatible") {
+      continue;
+    }
 
     const isKeyless = entry.setupMode === "keyless";
 

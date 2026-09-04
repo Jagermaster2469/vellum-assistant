@@ -51,8 +51,85 @@ export const WhatsAppConfigSchema = z
       .describe(
         "Initial backoff delay between retries in milliseconds (doubles on each retry)",
       ),
+    // ── Admission policy (Hermes-parity) ────────────────────────────────
+    // Who may reach the assistant and when it answers in groups, mirroring
+    // the Hermes WhatsApp config semantics (mention gating, group policy,
+    // allowlists).
+    allowFrom: z
+      .array(z.string())
+      .default([])
+      .describe(
+        "Phone numbers allowed to talk to the assistant. Empty = everyone passes to the default admission policy",
+      ),
+    freeResponseChats: z
+      .array(z.string())
+      .default([])
+      .describe(
+        "WhatsApp chat ids (groups or DMs) where the assistant answers without a mention",
+      ),
+    groupPolicy: z
+      .enum(["open", "mention", "allowlist"])
+      .default("open")
+      .describe(
+        "Group behavior: open = answer everything, mention = only when mentioned, allowlist = only in freeResponseChats or when mentioned",
+      ),
+    mentionPatterns: z
+      .array(z.string())
+      .default([])
+      .describe(
+        "Regex patterns that count as a mention of the assistant (e.g. ^@hermes_responde:). Empty = the assistant's name/mention is used",
+      ),
   })
   .describe("WhatsApp Business channel configuration");
+
+export const BuzzConfigSchema = z
+  .object({
+    relayUrl: z
+      .string({ error: "buzz.relayUrl must be a string" })
+      .default("")
+      .describe("Base URL of the Buzz community relay (Nostr WebSocket)"),
+    transport: z
+      .enum(["auto", "websocket", "poll"])
+      .default("auto")
+      .describe(
+        "Inbound transport: auto (WebSocket with poll fallback), websocket, or poll",
+      ),
+    channels: z
+      .array(z.string())
+      .default([])
+      .describe("Buzz channel UUIDs to watch. Empty = all joined channels"),
+    homeChannel: z
+      .string({ error: "buzz.homeChannel must be a string" })
+      .default("")
+      .describe(
+        "Channel UUID for proactive notification delivery (defaults to the first watched channel)",
+      ),
+    allowedUsers: z
+      .array(z.string())
+      .default([])
+      .describe("Nostr pubkeys (npub or hex) allowed to talk to the assistant"),
+    allowAllUsers: z
+      .boolean({ error: "buzz.allowAllUsers must be a boolean" })
+      .default(false)
+      .describe("Allow any community member to talk to the assistant"),
+    pollIntervalSeconds: z
+      .number({ error: "buzz.pollIntervalSeconds must be a number" })
+      .int("buzz.pollIntervalSeconds must be an integer")
+      .positive("buzz.pollIntervalSeconds must be a positive integer")
+      .default(4)
+      .describe("Seconds between inbound poll sweeps"),
+    replyInThread: z
+      .boolean({ error: "buzz.replyInThread must be a boolean" })
+      .default(true)
+      .describe(
+        "Thread replies under the triggering message; false posts flat to the channel timeline",
+      ),
+    enabled: z
+      .boolean({ error: "buzz.enabled must be a boolean" })
+      .default(false)
+      .describe("Whether the Buzz channel is enabled"),
+  })
+  .describe("Buzz channel configuration (Nostr relay)");
 
 export const TelegramConfigSchema = z
   .object({

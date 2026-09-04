@@ -20,6 +20,7 @@ import { BackupConfigSchema } from "./schemas/backup.js";
 import { CallsConfigSchema } from "./schemas/calls.js";
 import {
   A2AConfigSchema,
+  BuzzConfigSchema,
   DiscordConfigSchema,
   SlackConfigSchema,
   TelegramConfigSchema,
@@ -124,6 +125,7 @@ export const AssistantConfigSchema = z.object({
   telegram: TelegramConfigSchema.default(TelegramConfigSchema.parse({})),
   slack: SlackConfigSchema.default(SlackConfigSchema.parse({})),
   discord: DiscordConfigSchema.default(DiscordConfigSchema.parse({})),
+  buzz: BuzzConfigSchema.default(BuzzConfigSchema.parse({})),
   a2a: A2AConfigSchema.default(A2AConfigSchema.parse({})),
   ingress: IngressConfigSchema,
   platform: PlatformConfigSchema.default(PlatformConfigSchema.parse({})),

@@ -62,6 +62,23 @@ const InferenceServiceSchema = z.object({});
 const ImageGenerationServiceSchema = z.object({
   provider: z.enum(VALID_IMAGE_GEN_PROVIDERS).default("gemini"),
   model: z.string().default(DEFAULT_IMAGE_MODEL),
+  // Custom API base for BYOK generation (e.g. a self-hosted OpenAI-compatible
+  // or Gemini-compatible image endpoint). Empty / omitted uses the provider's
+  // cloud default. Ignored for `vellum` (managed proxy).
+  apiBase: z.string().optional(),
+});
+
+const VALID_VIDEO_GEN_PROVIDERS = ["vellum", "xai"] as const;
+
+/**
+ * Video generation mirrors image generation: `vellum` routes through the
+ * platform proxy; `xai` uses the user's XAI key (grok-imagine-video family).
+ * `apiBase` supports self-hosted / proxy endpoints for BYOK providers.
+ */
+const VideoGenerationServiceSchema = z.object({
+  provider: z.enum(VALID_VIDEO_GEN_PROVIDERS).default("xai"),
+  model: z.string().optional(),
+  apiBase: z.string().optional(),
 });
 
 /**
@@ -160,6 +177,9 @@ export const ServicesSchema = z.object({
   inference: InferenceServiceSchema.default(InferenceServiceSchema.parse({})),
   "image-generation": ImageGenerationServiceSchema.default(
     ImageGenerationServiceSchema.parse({}),
+  ),
+  "video-generation": VideoGenerationServiceSchema.default(
+    VideoGenerationServiceSchema.parse({}),
   ),
   "web-search": WebSearchServiceSchema.default(
     WebSearchServiceSchema.parse({}),
