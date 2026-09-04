@@ -860,7 +860,9 @@
     "savedToast": "图像生成设置已保存。",
     "subtitle": "配置您的助手用于生成图像的模型",
     "title": "图像生成",
-    "vellumNote": "图像生成通过您的 Vellum 账户运行。"
+    "vellumNote": "图像生成通过您的 Vellum 账户运行。",
+    "apiBaseLabel": "API 基址",
+    "apiBasePlaceholder": "https://your-endpoint.example.com/v1"
   },
   "integrationDetailModal": {
     "accountFallback": "{name} 账户",

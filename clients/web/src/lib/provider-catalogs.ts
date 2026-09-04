@@ -253,12 +253,18 @@ export const IMAGE_GEN_MODEL_DISPLAY_NAMES: Record<string, string> = {
  * managed option (no API key; billed to the Vellum account); `gemini` and
  * `openai` use the user's key and list only the models that key can serve.
  */
-export const IMAGE_GEN_PROVIDERS = ["vellum", "gemini", "openai"] as const;
+export const IMAGE_GEN_PROVIDERS = [
+  "vellum",
+  "gemini",
+  "openai",
+  "openai-compatible",
+] as const;
 
 export const IMAGE_GEN_PROVIDER_DISPLAY_NAMES: Record<string, string> = {
   vellum: "Vellum",
   gemini: "Gemini",
   openai: "OpenAI",
+  "openai-compatible": "OpenAI Compatible",
 };
 
 /**
@@ -269,6 +275,11 @@ export const IMAGE_GEN_PROVIDER_DISPLAY_NAMES: Record<string, string> = {
 export function imageGenModelsForProvider(provider: string): string[] {
   if (provider === "vellum") {
     return [...AVAILABLE_IMAGE_GEN_MODELS];
+  }
+  if (provider === "openai-compatible") {
+    return AVAILABLE_IMAGE_GEN_MODELS.filter(
+      (m) => providerForImageGenModel(m) === "openai",
+    );
   }
   return AVAILABLE_IMAGE_GEN_MODELS.filter(
     (m) => providerForImageGenModel(m) === provider,

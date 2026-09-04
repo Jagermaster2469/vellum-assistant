@@ -860,7 +860,9 @@
     "savedToast": "Image generation settings saved.",
     "subtitle": "Configure which model your assistant uses to generate images",
     "title": "Image Generation",
-    "vellumNote": "Image generation runs through your Vellum account."
+    "vellumNote": "Image generation runs through your Vellum account.",
+    "apiBaseLabel": "API Base",
+    "apiBasePlaceholder": "https://your-endpoint.example.com/v1"
   },
   "integrationDetailModal": {
     "accountFallback": "{name} Account",

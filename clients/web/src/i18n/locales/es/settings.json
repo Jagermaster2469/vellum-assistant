@@ -860,7 +860,9 @@
     "savedToast": "Configuración de generación de imágenes guardada.",
     "subtitle": "Configura qué modelo usa tu asistente para generar imágenes",
     "title": "Generación de imágenes",
-    "vellumNote": "La generación de imágenes se ejecuta a través de tu cuenta de Vellum."
+    "vellumNote": "La generación de imágenes se ejecuta a través de tu cuenta de Vellum.",
+    "apiBaseLabel": "Base de la API",
+    "apiBasePlaceholder": "https://tu-endpoint.ejemplo.com/v1"
   },
   "integrationDetailModal": {
     "accountFallback": "Cuenta de {name}",

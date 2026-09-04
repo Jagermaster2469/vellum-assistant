@@ -88,6 +88,15 @@ export function ImageGenerationCard() {
 
   const [provider, setDraftProvider] = useDraftOverride(serverProvider);
 
+  const serverApiBase = useMemo((): string => {
+    if (!daemonConfig) {
+      return "";
+    }
+    const svc = daemonConfig.services?.["image-generation"] as
+      { apiBase?: string } | undefined;
+    return svc?.apiBase ?? "";
+  }, [daemonConfig]);
+
   const [imageGenModel, setImageGenModel] = useState(() =>
     getLocalSetting(LS_IMAGE_GEN_MODEL, DEFAULT_IMAGE_GEN_MODEL),
   );
@@ -99,6 +108,7 @@ export function ImageGenerationCard() {
     ? imageGenModel
     : (providerModels[0] ?? DEFAULT_IMAGE_GEN_MODEL);
   const [imageGenApiKey, setImageGenApiKey] = useState("");
+  const [imageGenApiBase, setImageGenApiBase] = useDraftOverride(serverApiBase);
   const [saving, setSaving] = useState(false);
 
   const providerOptions = IMAGE_GEN_PROVIDERS.map((id) => ({
@@ -115,13 +125,18 @@ export function ImageGenerationCard() {
     [provider],
   );
 
-  const requiresApiKey = provider === "gemini" || provider === "openai";
+  const requiresApiKey =
+    provider === "gemini" ||
+    provider === "openai" ||
+    provider === "openai-compatible";
+
+  const credentialName = provider === "openai-compatible" ? "openai" : provider;
 
   const { hasStoredCredential: imageGenHasStoredKey } =
     useStoredCredentialPresence({
       assistantId,
       credentialKind: "api_key",
-      credentialName: provider,
+      credentialName,
       enabled: requiresApiKey,
     });
 
@@ -132,11 +147,14 @@ export function ImageGenerationCard() {
   const handleSave = useCallback(async () => {
     setSaving(true);
     const trimmed = imageGenApiKey.trim();
+    const trimmedApiBase = imageGenApiBase.trim();
     const hasUserKey = requiresApiKey && trimmed.length > 0;
     try {
       if (hasUserKey) {
         await provisionProviderKey(
-          providerForImageGenModel(effectiveModel),
+          provider === "openai-compatible"
+            ? "openai"
+            : providerForImageGenModel(effectiveModel),
           trimmed,
         );
       }
@@ -152,11 +170,15 @@ export function ImageGenerationCard() {
       const imageGenService: {
         provider?: string;
         mode: "managed" | "your-own";
+        apiBase?: string;
       } = vellumUnsupported
         ? { mode: "managed" }
         : {
             provider,
             mode: provider === "vellum" ? "managed" : "your-own",
+            ...(provider === "openai-compatible" && trimmedApiBase
+              ? { apiBase: trimmedApiBase }
+              : {}),
           };
       await configMutation
         .mutateAsync({
@@ -210,6 +232,7 @@ export function ImageGenerationCard() {
     }
   }, [
     imageGenApiKey,
+    imageGenApiBase,
     provider,
     requiresApiKey,
     effectiveModel,
@@ -222,9 +245,10 @@ export function ImageGenerationCard() {
 
   const handleReset = useCallback(() => {
     setImageGenApiKey("");
+    setImageGenApiBase("");
     setImageGenModel(DEFAULT_IMAGE_GEN_MODEL);
     setLocalSetting(LS_IMAGE_GEN_MODEL, DEFAULT_IMAGE_GEN_MODEL);
-  }, []);
+  }, [setImageGenApiBase]);
 
   return (
     <ByoServiceCard
@@ -257,11 +281,22 @@ export function ImageGenerationCard() {
             value={imageGenApiKey}
             onChange={(e) => setImageGenApiKey(e.target.value)}
             placeholder={secretPlaceholder(
-              provider === "openai"
+              provider === "openai" || provider === "openai-compatible"
                 ? t("imageGenerationCard.openaiApiKeyPlaceholder")
                 : t("imageGenerationCard.geminiApiKeyPlaceholder"),
               imageGenHasStoredKey,
             )}
+            fullWidth
+          />
+        )}
+
+        {provider === "openai-compatible" && (
+          <Input
+            label={t("imageGenerationCard.apiBaseLabel")}
+            type="url"
+            value={imageGenApiBase}
+            onChange={(e) => setImageGenApiBase(e.target.value)}
+            placeholder={t("imageGenerationCard.apiBasePlaceholder")}
             fullWidth
           />
         )}

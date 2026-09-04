@@ -101,9 +101,8 @@ mock.module("@/lib/backwards-compat/utils", () => ({
   whenAssistantVersionKnown: () => Promise.resolve(),
 }));
 
-const { ImageGenerationCard } = await import(
-  "@/domains/settings/ai/image-generation-card"
-);
+const { ImageGenerationCard } =
+  await import("@/domains/settings/ai/image-generation-card");
 const { LS_IMAGE_GEN_PROVIDER } = await import("@/utils/local-settings-keys");
 
 function renderCard() {
@@ -181,11 +180,16 @@ describe("ImageGenerationCard — provider-only configuration", () => {
     expect(trigger("Image generation provider")).toBeTruthy();
   });
 
-  test("the provider picker offers Vellum, Gemini and OpenAI", () => {
+  test("the provider picker offers Vellum, Gemini, OpenAI and OpenAI Compatible", () => {
     renderCard();
 
     fireEvent.click(trigger("Image generation provider"));
-    expect(visibleOptions()).toEqual(["Vellum", "Gemini", "OpenAI"]);
+    expect(visibleOptions()).toEqual([
+      "Vellum",
+      "Gemini",
+      "OpenAI",
+      "OpenAI Compatible",
+    ]);
   });
 
   test("Vellum hides the key field, lists every model, and saves the pair", async () => {
@@ -286,6 +290,41 @@ describe("ImageGenerationCard — provider-only configuration", () => {
     ).toBeTruthy();
     fireEvent.click(trigger("Image generation model"));
     expect(visibleOptions()).toEqual(["GPT Image 2"]);
+  });
+
+  test("selecting OpenAI Compatible shows the endpoint field and saves the triple", async () => {
+    renderCard();
+
+    fireEvent.click(trigger("Image generation provider"));
+    selectOption("OpenAI Compatible");
+
+    expect(
+      screen.getByPlaceholderText("Enter your OpenAI API key"),
+    ).toBeTruthy();
+    expect(
+      screen.getByPlaceholderText("https://your-endpoint.example.com/v1"),
+    ).toBeTruthy();
+    fireEvent.click(trigger("Image generation model"));
+    expect(visibleOptions()).toEqual(["GPT Image 2"]);
+    closeMenu();
+
+    const baseInput = screen.getByPlaceholderText(
+      "https://your-endpoint.example.com/v1",
+    );
+    fireEvent.change(baseInput, {
+      target: { value: "http://127.0.0.1:11434/v1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(configPatchCalls.length).toBe(1));
+    expect(configPatchCalls[0]!.body).toMatchObject({
+      services: {
+        "image-generation": {
+          provider: "openai-compatible",
+          mode: "your-own",
+          apiBase: "http://127.0.0.1:11434/v1",
+        },
+      },
+    });
   });
 
   test("an openai daemon config renders as the selected provider", async () => {

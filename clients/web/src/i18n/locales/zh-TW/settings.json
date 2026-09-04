@@ -860,7 +860,9 @@
     "savedToast": "圖片生成設定已儲存。",
     "subtitle": "設定您的助理用於生成圖片的模型",
     "title": "圖片生成",
-    "vellumNote": "圖片生成透過您的 Vellum 帳號執行。"
+    "vellumNote": "圖片生成透過您的 Vellum 帳號執行。",
+    "apiBaseLabel": "API 基礎網址",
+    "apiBasePlaceholder": "https://your-endpoint.example.com/v1"
   },
   "integrationDetailModal": {
     "accountFallback": "{name} 帳號",

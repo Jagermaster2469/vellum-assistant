@@ -846,7 +846,9 @@
     "savedToast": "Настройки генерации изображений сохранены.",
     "subtitle": "Настройка модели, которой ассистент генерирует изображения",
     "title": "Генерация изображений",
-    "vellumNote": "Генерация изображений идёт через аккаунт Vellum."
+    "vellumNote": "Генерация изображений идёт через аккаунт Vellum.",
+    "apiBaseLabel": "Ссылка на API",
+    "apiBasePlaceholder": "https://your-endpoint.example.com/v1"
   },
   "integrationDetailModal": {
     "accountFallback": "Аккаунт {name}",
