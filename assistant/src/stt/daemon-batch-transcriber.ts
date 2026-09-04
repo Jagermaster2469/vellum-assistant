@@ -40,9 +40,11 @@ class WhisperBatchTranscriber implements BatchTranscriber {
   readonly boundaryId = "daemon-batch" as const;
 
   private readonly apiKey: string;
+  private readonly baseUrl: string | undefined;
 
-  constructor(apiKey: string) {
+  constructor(apiKey: string, baseUrl?: string) {
     this.apiKey = apiKey;
+    this.baseUrl = baseUrl;
   }
 
   async transcribe(
@@ -52,7 +54,9 @@ class WhisperBatchTranscriber implements BatchTranscriber {
     // only need the resolver, not the provider.
     const { OpenAIWhisperProvider } =
       await import("../providers/speech-to-text/openai-whisper.js");
-    const provider = new OpenAIWhisperProvider(this.apiKey);
+    const provider = new OpenAIWhisperProvider(this.apiKey, {
+      ...(this.baseUrl ? { baseUrl: this.baseUrl } : {}),
+    });
 
     return provider.transcribe(request.audio, request.mimeType, request.signal);
   }
@@ -75,10 +79,12 @@ class DeepgramBatchTranscriber implements BatchTranscriber {
 
   private readonly apiKey: string;
   private readonly language: string | undefined;
+  private readonly baseUrl: string | undefined;
 
-  constructor(apiKey: string, language?: string) {
+  constructor(apiKey: string, language?: string, baseUrl?: string) {
     this.apiKey = apiKey;
     this.language = language;
+    this.baseUrl = baseUrl;
   }
 
   async transcribe(
@@ -86,10 +92,10 @@ class DeepgramBatchTranscriber implements BatchTranscriber {
   ): Promise<SttTranscribeResult> {
     const { DeepgramProvider, deepgramLanguageOptions } =
       await import("../providers/speech-to-text/deepgram.js");
-    const provider = new DeepgramProvider(
-      this.apiKey,
-      deepgramLanguageOptions(this.language),
-    );
+    const provider = new DeepgramProvider(this.apiKey, {
+      ...deepgramLanguageOptions(this.language),
+      ...(this.baseUrl ? { baseUrl: this.baseUrl } : {}),
+    });
 
     return provider.transcribe(request.audio, request.mimeType, request.signal);
   }
@@ -144,10 +150,12 @@ class XAIBatchTranscriber implements BatchTranscriber {
 
   private readonly apiKey: string;
   private readonly language: string | undefined;
+  private readonly baseUrl: string | undefined;
 
-  constructor(apiKey: string, language?: string) {
+  constructor(apiKey: string, language?: string, baseUrl?: string) {
     this.apiKey = apiKey;
     this.language = language;
+    this.baseUrl = baseUrl;
   }
 
   async transcribe(
@@ -157,10 +165,10 @@ class XAIBatchTranscriber implements BatchTranscriber {
       await import("../providers/speech-to-text/xai.js");
     // Drops "multi" (a Deepgram-specific mode, not a language code); see
     // xaiLanguageOptions.
-    const provider = new XAIProvider(
-      this.apiKey,
-      xaiLanguageOptions(this.language),
-    );
+    const provider = new XAIProvider(this.apiKey, {
+      ...xaiLanguageOptions(this.language),
+      ...(this.baseUrl ? { baseUrl: this.baseUrl } : {}),
+    });
     return provider.transcribe(request.audio, request.mimeType, request.signal);
   }
 }
@@ -247,6 +255,10 @@ class VellumManagedBatchTranscriber implements BatchTranscriber {
  * it to Deepgram server-side. Whisper and Gemini auto-detect natively and
  * take no language parameter, so it is silently ignored for them.
  *
+ * `baseUrl` is `services.stt.baseUrl`, forwarded to the BYOK providers whose
+ * adapters accept a custom origin (Deepgram, openai-whisper, xAI); the
+ * managed relay and Gemini ignore it.
+ *
  * Throws an {@link SttError} for a provider with no batch endpoint at all,
  * which no key can fix and `null` would understate.
  */
@@ -254,6 +266,7 @@ export function createDaemonBatchTranscriber(
   apiKey: string | null | undefined,
   providerId: SttProviderId,
   language?: string,
+  baseUrl?: string,
 ): BatchTranscriber | null {
   // vellum authenticates via the platform connection, not an API key.
   if (providerId === "vellum") {
@@ -265,13 +278,13 @@ export function createDaemonBatchTranscriber(
 
   switch (providerId) {
     case "openai-whisper":
-      return new WhisperBatchTranscriber(apiKey);
+      return new WhisperBatchTranscriber(apiKey, baseUrl);
     case "deepgram":
-      return new DeepgramBatchTranscriber(apiKey, language);
+      return new DeepgramBatchTranscriber(apiKey, language, baseUrl);
     case "google-gemini":
       return new GoogleGeminiBatchTranscriber(apiKey);
     case "xai":
-      return new XAIBatchTranscriber(apiKey, language);
+      return new XAIBatchTranscriber(apiKey, language, baseUrl);
     case "deepgram-flux":
     case "vellum-flux":
       // Same copy the resolver raises, so a direct factory caller and a

@@ -131,6 +131,19 @@ export const CHANNEL_METADATA: Partial<Record<ChannelId, ChannelInfo>> = {
         "I'd like to verify a contact's Discord identity. Can you walk me through it?",
     },
   },
+  buzz: {
+    id: "buzz",
+    label: "Buzz",
+    subtitle: "Message your assistant from a Buzz community",
+    icon: "message-square",
+    supportsVerification: false,
+    setupMessages: {
+      guardian:
+        "I'd like to verify my identity as your guardian on Buzz. Can you help me set that up?",
+      contact:
+        "I'd like to verify a contact's Buzz identity. Can you walk me through it?",
+    },
+  },
   phone: {
     id: "phone",
     label: "Phone Calling",

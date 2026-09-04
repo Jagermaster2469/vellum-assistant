@@ -121,7 +121,12 @@ describe("parity with meta/llm-provider-catalog.json", () => {
   const webProviderIds = (
     Object.keys(MODELS_BY_PROVIDER) as LlmProviderId[]
   ).filter((id) => id !== "openai-compatible" && id !== "vellum");
-  const pickerProviderIds = webProviderIds;
+  // The call-site picker DOES list openai-compatible: its rows come from
+  // connections, not the (empty) catalog entry. Only the vellum identity
+  // stays out.
+  const pickerProviderIds = (
+    Object.keys(MODELS_BY_PROVIDER) as LlmProviderId[]
+  ).filter((id) => id !== "vellum");
 
   test("vellum picker is the union of served catalogs, including GPU models", () => {
     // MODELS_BY_PROVIDER.vellum lists only Vellum-hosted GPU models. The

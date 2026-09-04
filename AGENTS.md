@@ -362,3 +362,10 @@ When publishing domain/live events from inside the daemon process, call the `ass
 - **Error handling conventions**: `assistant/docs/error-handling.md`
 - **Notification pipeline**: `assistant/src/notifications/AGENTS.md`
 - **Trust & guardian invariants**: `assistant/src/approvals/AGENTS.md`
+
+<!-- SPECKIT START -->
+## Active Spec: Provider Freedom (001-provider-freedom)
+
+Spec-driven feature in progress. Plan and artifacts: `specs/001-provider-freedom/plan.md`
+(spec.md, research.md, data-model.md, quickstart.md, tasks.md in the same directory).
+<!-- SPECKIT END -->

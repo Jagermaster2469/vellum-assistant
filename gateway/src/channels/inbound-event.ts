@@ -17,7 +17,14 @@ import type { ChannelId } from "./types.js";
 
 export type InboundChannelId = Extract<
   ChannelId,
-  "telegram" | "whatsapp" | "slack" | "email" | "a2a" | "discord" | "plugin"
+  | "telegram"
+  | "whatsapp"
+  | "slack"
+  | "email"
+  | "a2a"
+  | "discord"
+  | "buzz"
+  | "plugin"
 >;
 
 export type GatewayInboundAttachment = {
@@ -170,6 +177,14 @@ export type DiscordInboundEvent = InboundEventBase<"discord">;
  * reaches the runtime on `sourceMetadata`, not here.
  */
 export type PluginInboundEvent = InboundEventBase<"plugin">;
+/**
+ * Constructed by `buzz/normalize.ts`. `conversationExternalId` is the Buzz
+ * channel UUID for channel messages and `dm:<hex-pubkey>` for DMs;
+ * `actorExternalId` is the author's hex pubkey; `source.threadId` carries the
+ * root note id when the message is a thread reply. `source.chatType` is
+ * `"dm"` or `"channel"`.
+ */
+export type BuzzInboundEvent = InboundEventBase<"buzz">;
 
 export type GatewayInboundEvent =
   | TelegramInboundEvent
@@ -178,6 +193,7 @@ export type GatewayInboundEvent =
   | EmailInboundEvent
   | A2aInboundEvent
   | DiscordInboundEvent
+  | BuzzInboundEvent
   | PluginInboundEvent;
 
 /**

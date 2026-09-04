@@ -16,6 +16,7 @@ const DIRECT_DELIVERY_CHANNELS = [
   "whatsapp",
   "a2a",
   "discord",
+  "buzz",
 ] as const satisfies readonly ChannelId[];
 
 export type DirectDeliveryChannel = (typeof DIRECT_DELIVERY_CHANNELS)[number];

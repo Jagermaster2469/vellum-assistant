@@ -597,8 +597,20 @@ describe("createChatDebugApi.serverMessages", () => {
       fakeRuntimeMessage({ id: "srv-1" }),
       fakeRuntimeMessage({ id: "srv-2", role: "user" }),
     ];
-    const snapshot = { messages: serverList, seq: 7 };
-    const historyFetcher = async () => snapshot;
+    // `fakeRuntimeMessage` produces the client-side `ConversationMessage`
+    // shape; the wire snapshot type carries the generated
+    // `MessagesGetResponse` messages. The shapes are compatible for this
+    // test's assertions, so the cast keeps the fixture honest without
+    // dragging the generated type into the fake.
+    type HistorySnapshot = NonNullable<
+      Awaited<ReturnType<NonNullable<ChatDebugRefs["historyFetcher"]>>>
+    >;
+    const snapshot: HistorySnapshot = {
+      messages: serverList as unknown as HistorySnapshot["messages"],
+      seq: 7,
+    };
+    const historyFetcher: ChatDebugRefs["historyFetcher"] = async () =>
+      snapshot;
     const api = createChatDebugApi(makeRefs({ historyFetcher }));
 
     // WHEN serverMessages() is called

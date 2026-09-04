@@ -11,6 +11,7 @@ export const WEB_SEARCH_PROVIDER_IDS: readonly string[] = [
   "firecrawl",
   "keenable",
   "fastcrw",
+  "x",
 ];
 
 /** Short display name used in picker UI. */
@@ -25,6 +26,7 @@ export const WEB_SEARCH_PROVIDER_DISPLAY_NAMES: Readonly<
   firecrawl: "Firecrawl",
   keenable: "Keenable",
   fastcrw: "fastCRW",
+  x: "X Search",
 };
 
 /** Placeholder hint shown in the API-key input. BYOK providers only. */
@@ -37,6 +39,7 @@ export const WEB_SEARCH_PROVIDER_KEY_PLACEHOLDERS: Readonly<
   firecrawl: "fc-...",
   keenable: "keen_... (optional)",
   fastcrw: "crw_live_...",
+  x: "xai-...",
 };
 
 /** localStorage key used to persist each BYOK provider's user-supplied key. */
@@ -48,6 +51,7 @@ export const WEB_SEARCH_PROVIDER_KEY_STORAGE: Readonly<Record<string, string>> =
     firecrawl: "vellum:ai:firecrawlKey",
     keenable: "vellum:ai:keenableKey",
     fastcrw: "vellum:ai:fastcrwKey",
+    x: "vellum:ai:xKey",
   };
 
 /** Provider ids that require a user-supplied API key. */
@@ -58,6 +62,7 @@ export const WEB_SEARCH_BYOK_PROVIDER_IDS: ReadonlySet<string> = new Set([
   "firecrawl",
   "keenable",
   "fastcrw",
+  "x",
 ]);
 
 /**

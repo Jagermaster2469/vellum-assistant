@@ -1,6 +1,8 @@
 import type { SttTranscribeResult } from "../../stt/types.js";
 
 const WHISPER_API_URL = "https://api.openai.com/v1/audio/transcriptions";
+/** Path appended to a configured `services.stt.baseUrl` origin. */
+const WHISPER_API_PATH = "/v1/audio/transcriptions";
 const DEFAULT_TIMEOUT_MS = 60_000;
 
 /**
@@ -48,18 +50,27 @@ function buildWhisperFormData(audio: Buffer, mimeType: string): FormData {
  * Send audio to the Whisper API and return the transcribed text.
  *
  * Shared helper used by both the batch provider and the streaming adapter.
+ *
+ * `baseUrl` is the `services.stt.baseUrl` origin. When set, the request goes
+ * to `${baseUrl}/v1/audio/transcriptions` instead of the OpenAI cloud
+ * default; unset keeps the default endpoint.
  */
 export async function whisperTranscribe(
   apiKey: string,
   audio: Buffer,
   mimeType: string,
   signal?: AbortSignal,
+  baseUrl?: string,
 ): Promise<string> {
   const formData = buildWhisperFormData(audio, mimeType);
 
   const effectiveSignal = signal ?? AbortSignal.timeout(DEFAULT_TIMEOUT_MS);
 
-  const response = await fetch(WHISPER_API_URL, {
+  const url = baseUrl
+    ? `${baseUrl.replace(/\/+$/, "")}${WHISPER_API_PATH}`
+    : WHISPER_API_URL;
+
+  const response = await fetch(url, {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}` },
     body: formData,
@@ -77,11 +88,22 @@ export async function whisperTranscribe(
   return result.text?.trim() ?? "";
 }
 
+export interface OpenAIWhisperProviderOptions {
+  /**
+   * Override the Whisper API base URL (the `services.stt.baseUrl` origin).
+   * When set, requests go to `${baseUrl}/v1/audio/transcriptions` instead
+   * of the OpenAI cloud default.
+   */
+  baseUrl?: string;
+}
+
 export class OpenAIWhisperProvider {
   private readonly apiKey: string;
+  private readonly baseUrl: string | undefined;
 
-  constructor(apiKey: string) {
+  constructor(apiKey: string, options: OpenAIWhisperProviderOptions = {}) {
     this.apiKey = apiKey;
+    this.baseUrl = options.baseUrl;
   }
 
   async transcribe(
@@ -89,7 +111,13 @@ export class OpenAIWhisperProvider {
     mimeType: string,
     signal?: AbortSignal,
   ): Promise<SttTranscribeResult> {
-    const text = await whisperTranscribe(this.apiKey, audio, mimeType, signal);
+    const text = await whisperTranscribe(
+      this.apiKey,
+      audio,
+      mimeType,
+      signal,
+      this.baseUrl,
+    );
     return { text };
   }
 }

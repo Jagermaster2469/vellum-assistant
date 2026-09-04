@@ -5,8 +5,10 @@ export const OPENAI_COMPATIBLE_PROVIDER = "openai-compatible";
 /**
  * Providers that have entries in the LLM model catalog and can be used in
  * call-site overrides. Must list exactly the MODELS_BY_PROVIDER keys in
- * llm-model-catalog.ts (minus openai-compatible, whose models are
- * per-connection); parity is enforced by llm-model-catalog.test.ts. Array
+ * llm-model-catalog.ts (minus vellum, the managed routing identity);
+ * parity is enforced by llm-model-catalog.test.ts. openai-compatible is a
+ * member even though its catalog model list is empty: its models are
+ * per-connection and its picker rows are one entry per connection. Array
  * order is the picker's display order, with index 0 as the default fallback.
  */
 export const INFERENCE_PROVIDERS = [
@@ -24,12 +26,14 @@ export const INFERENCE_PROVIDERS = [
   "opencode",
   "baseten",
   "poolside",
+  "openai-compatible",
 ] as const;
 
 /**
  * Narrows a stored provider to the picker's domain. `LlmProvider` is wider:
- * it also carries routing sentinels (`openai-compatible`, `vellum`,
- * `chatgpt`) that deliberately never appear in the provider picker.
+ * it also carries routing sentinels (`vellum`, `chatgpt`) that are not
+ * catalog providers. An openai-compatible pin is a member here; its
+ * per-endpoint binding lives in the entry's `provider_connection`.
  */
 export function isInferenceProvider(
   provider: string | null | undefined,

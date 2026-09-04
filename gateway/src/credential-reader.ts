@@ -335,6 +335,11 @@ export const DISCORD_CHANNEL_CREDENTIAL_SPEC: ServiceCredentialSpec = {
   requiredFields: ["bot_token"],
 } as const;
 
+export const BUZZ_CREDENTIAL_SPEC: ServiceCredentialSpec = {
+  service: "buzz",
+  requiredFields: ["nsec"],
+} as const;
+
 export const VELLUM_CREDENTIAL_SPEC: ServiceCredentialSpec = {
   service: "vellum",
   requiredFields: [
@@ -351,5 +356,6 @@ export const ALL_CREDENTIAL_SPECS: readonly ServiceCredentialSpec[] = [
   WHATSAPP_CREDENTIAL_SPEC,
   SLACK_CHANNEL_CREDENTIAL_SPEC,
   DISCORD_CHANNEL_CREDENTIAL_SPEC,
+  BUZZ_CREDENTIAL_SPEC,
   VELLUM_CREDENTIAL_SPEC,
 ];

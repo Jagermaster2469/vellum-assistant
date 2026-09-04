@@ -194,6 +194,10 @@ import { downloadSlackFile } from "./slack/download.js";
 import { slackBotContactNote } from "./slack/actor.js";
 import { DiscordGatewayClient } from "./discord/gateway-socket.js";
 import { createDiscordInboundEventHandler } from "./discord/forward.js";
+import { createBuzzInboundEventHandler } from "./buzz/forward.js";
+import { normalizeBuzzEvent } from "./buzz/normalize.js";
+import { BuzzRelayClient } from "./buzz/relay-socket.js";
+import { createBuzzSigner, deriveBuzzHexPubkey } from "./buzz/sign.js";
 import { handleInbound } from "./handlers/handle-inbound.js";
 import { upsertContactChannel } from "./verification/contact-helpers.js";
 import { checkAuthRateLimit } from "./http/middleware/rate-limit.js";
@@ -2731,6 +2735,66 @@ async function main() {
     log.info("Discord Gateway client started");
   }
 
+  let buzzRelayClient: BuzzRelayClient | null = null;
+  const buzzForwardQueue = createConversationTaskQueue();
+
+  async function startBuzzGateway(): Promise<void> {
+    if (buzzRelayClient) {
+      buzzRelayClient.stop();
+      buzzRelayClient = null;
+    }
+
+    if (!configFileCache.getBoolean("buzz", "enabled")) {
+      return;
+    }
+    const relayUrl = configFileCache.getString("buzz", "relayUrl");
+    const nsec = await credentialCache.get(credentialKey("buzz", "nsec"));
+    if (!relayUrl || !nsec) {
+      return;
+    }
+    const hexPubkey = deriveBuzzHexPubkey(nsec);
+    if (!hexPubkey) {
+      log.warn(
+        "buzz CLI unavailable — cannot derive the assistant identity; Buzz channel stays offline",
+      );
+      return;
+    }
+
+    const channels = configFileCache.getStringArray("buzz", "channels") ?? [];
+    const transport = configFileCache.getString("buzz", "transport") ?? "auto";
+    const pollIntervalSeconds = configFileCache.getNumber(
+      "buzz",
+      "pollIntervalSeconds",
+    );
+
+    const forwardEvent = createBuzzInboundEventHandler({
+      config,
+      log,
+      notifyRecordActivity,
+      forwardQueue: buzzForwardQueue,
+    });
+
+    buzzRelayClient = new BuzzRelayClient({
+      relayUrl,
+      hexPubkey,
+      signer: createBuzzSigner({ nsecHex: nsec }),
+      channels,
+      transport: transport === "poll" ? "poll" : "auto",
+      pollIntervalMs: (pollIntervalSeconds ?? 4) * 1000,
+      onEvent: (raw) => {
+        const normalized = normalizeBuzzEvent(raw, new Date().toISOString());
+        if (normalized) {
+          forwardEvent(normalized.event);
+        }
+      },
+    });
+
+    buzzRelayClient.start().catch((err) => {
+      log.error({ err }, "Failed to start Buzz relay client");
+    });
+    log.info({ relayUrl }, "Buzz relay client started");
+  }
+
   // Lazily bound below, once `remoteFeatureFlagSync` is constructed, so the
   // credential-change callback can trigger an immediate per-assistant flag
   // re-sync. On a warm-pool claim the `vellum` credentials change to the
@@ -2807,6 +2871,14 @@ async function main() {
         log.error(
           { err },
           "Failed to restart Discord Gateway after credential change",
+        );
+      });
+    }
+    if (changed.has("buzz")) {
+      startBuzzGateway().catch((err) => {
+        log.error(
+          { err },
+          "Failed to restart Buzz relay client after credential change",
         );
       });
     }
@@ -2932,6 +3004,15 @@ async function main() {
         log.error(
           { err },
           "Failed to restart Slack Socket Mode after config change",
+        );
+      });
+    }
+
+    if (event.changedKeys.has("buzz")) {
+      startBuzzGateway().catch((err) => {
+        log.error(
+          { err },
+          "Failed to restart Buzz relay client after config change",
         );
       });
     }

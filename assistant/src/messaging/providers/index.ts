@@ -15,6 +15,7 @@ import type {
 } from "@vellumai/gateway-client";
 
 import { a2aTransport } from "./a2a/transport.js";
+import { buzzTransport } from "./buzz/transport.js";
 import type { DirectDeliveryChannel } from "./callback-routing.js";
 import { channelForCallback } from "./callback-routing.js";
 import type {
@@ -39,6 +40,7 @@ const TRANSPORTS: Record<DirectDeliveryChannel, ChannelTransport> = {
   whatsapp: whatsappTransport,
   a2a: a2aTransport,
   discord: discordTransport,
+  buzz: buzzTransport,
 };
 
 /**

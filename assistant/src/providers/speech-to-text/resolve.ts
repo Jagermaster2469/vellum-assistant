@@ -171,6 +171,7 @@ export async function resolveBatchTranscriber(
     apiKey,
     provider as SttProviderId,
     language,
+    stt.baseUrl,
   );
 }
 
@@ -536,6 +537,7 @@ export async function resolveStreamingTranscriber(
     utteranceBoundaryFinals: options.utteranceBoundaryFinals ?? false,
     utteranceEndMs: options.utteranceEndMs,
     ...(language ? { language } : {}),
+    ...(stt.baseUrl ? { baseUrl: stt.baseUrl } : {}),
   });
 }
 
@@ -590,6 +592,34 @@ interface CreateStreamingTranscriberOptions {
    * server-side).
    */
   language?: string;
+  /**
+   * Custom base URL (`services.stt.baseUrl`), forwarded to the BYOK
+   * adapters that accept one. For the WebSocket-based realtime adapters
+   * (Deepgram, xAI) an `http(s)` scheme is rewritten to its `ws(s)` twin,
+   * since the configured value is written as the provider's HTTP origin.
+   * The Whisper streaming adapter takes no base URL option, so this is
+   * ignored there; the managed relay and Gemini ignore it too.
+   */
+  baseUrl?: string;
+}
+
+/**
+ * Adapt a configured `services.stt.baseUrl` origin for a WebSocket dial.
+ *
+ * The config value is written as the provider's HTTP origin (it is shared
+ * with the batch endpoints, which are plain HTTPS). The WebSocket-based
+ * realtime adapters need the `ws`/`wss` twin of that origin, so `http(s)`
+ * schemes are rewritten here rather than leaving the dial doomed. Values
+ * that already carry a `ws(s)` scheme pass through unchanged.
+ */
+function realtimeWebSocketBaseUrl(baseUrl: string): string {
+  if (baseUrl.startsWith("https://")) {
+    return `wss://${baseUrl.slice("https://".length)}`;
+  }
+  if (baseUrl.startsWith("http://")) {
+    return `ws://${baseUrl.slice("http://".length)}`;
+  }
+  return baseUrl;
 }
 
 /**
@@ -625,6 +655,11 @@ async function createStreamingTranscriber(
                 options.utteranceEndMs ?? UTTERANCE_BOUNDARY_END_MS,
             }
           : {}),
+        // The configured base URL is an HTTP(S) origin; the realtime dial
+        // needs the WebSocket twin (see `realtimeWebSocketBaseUrl`).
+        ...(options.baseUrl
+          ? { baseUrl: realtimeWebSocketBaseUrl(options.baseUrl) }
+          : {}),
       });
     }
     case "google-gemini": {
@@ -638,7 +673,9 @@ async function createStreamingTranscriber(
     }
     case "openai-whisper": {
       // OpenAI Whisper does not support speaker diarization; the diarize
-      // option is silently ignored here.
+      // option is silently ignored here. The incremental-batch streaming
+      // adapter also takes no base URL option, so `services.stt.baseUrl`
+      // is ignored on this path (batch transcription still honors it).
       const { OpenAIWhisperStreamingTranscriber } =
         await import("./openai-whisper-stream.js");
       return new OpenAIWhisperStreamingTranscriber(apiKey, {
@@ -654,6 +691,14 @@ async function createStreamingTranscriber(
         // xaiLanguageOptions.
         ...xaiLanguageOptions(options.language),
         ...(options.diarize ? { diarize: true } : {}),
+        // The configured base URL is an HTTP(S) origin; the adapter's
+        // baseUrl is the full WebSocket URL, so rewrite the scheme and
+        // append the `/v1/stt` path its cloud default carries.
+        ...(options.baseUrl
+          ? {
+              baseUrl: `${realtimeWebSocketBaseUrl(options.baseUrl).replace(/\/+$/, "")}/v1/stt`,
+            }
+          : {}),
       });
     }
     case "vellum": {

@@ -1,6 +1,8 @@
 import type { SttTranscribeResult } from "../../stt/types.js";
 
 const XAI_STT_URL = "https://api.x.ai/v1/stt";
+/** Path appended to a configured `services.stt.baseUrl` origin. */
+const XAI_STT_PATH = "/v1/stt";
 const DEFAULT_TIMEOUT_MS = 60_000;
 
 /**
@@ -58,6 +60,10 @@ function buildXaiFormData(
  *
  * xAI returns a richer shape (`{ text, language, duration, words }`) — we only
  * consume `text`.
+ *
+ * `baseUrl` is the `services.stt.baseUrl` origin. When set, the request goes
+ * to `${baseUrl}/v1/stt` instead of the xAI cloud default; unset keeps the
+ * default endpoint.
  */
 async function xaiTranscribe(
   apiKey: string,
@@ -65,12 +71,17 @@ async function xaiTranscribe(
   mimeType: string,
   language?: string,
   signal?: AbortSignal,
+  baseUrl?: string,
 ): Promise<string> {
   const formData = buildXaiFormData(audio, mimeType, language);
 
   const effectiveSignal = signal ?? AbortSignal.timeout(DEFAULT_TIMEOUT_MS);
 
-  const response = await fetch(XAI_STT_URL, {
+  const url = baseUrl
+    ? `${baseUrl.replace(/\/+$/, "")}${XAI_STT_PATH}`
+    : XAI_STT_URL;
+
+  const response = await fetch(url, {
     method: "POST",
     headers: { Authorization: `Bearer ${apiKey}` },
     body: formData,
@@ -95,6 +106,12 @@ export interface XAIProviderOptions {
    * no hint is given.
    */
   language?: string;
+  /**
+   * Override the xAI STT API base URL (the `services.stt.baseUrl` origin).
+   * When set, requests go to `${baseUrl}/v1/stt` instead of the xAI cloud
+   * default.
+   */
+  baseUrl?: string;
 }
 
 /**
@@ -115,10 +132,12 @@ export function xaiLanguageOptions(language: string | undefined): {
 export class XAIProvider {
   private readonly apiKey: string;
   private readonly language: string | undefined;
+  private readonly baseUrl: string | undefined;
 
   constructor(apiKey: string, options: XAIProviderOptions = {}) {
     this.apiKey = apiKey;
     this.language = options.language;
+    this.baseUrl = options.baseUrl;
   }
 
   async transcribe(
@@ -132,6 +151,7 @@ export class XAIProvider {
       mimeType,
       this.language,
       signal,
+      this.baseUrl,
     );
     return { text };
   }
