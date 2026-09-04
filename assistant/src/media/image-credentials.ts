@@ -26,15 +26,21 @@ import { providerForImageModelPrefix, providerForModel } from "./types.js";
  * model override re-routing to the model's backend.
  */
 export function resolveImageGenRouting(
-  svc: { provider: string; model: string },
+  svc: { provider: string; model: string; apiBase?: string },
   modelOverride?: unknown,
-): { backendProvider: ImageGenProvider; managed: boolean } {
+): {
+  backendProvider: ImageGenProvider;
+  managed: boolean;
+  apiBase?: string;
+} {
   const managed = svc.provider === "vellum";
   if (svc.provider === "vellum") {
     const model =
       typeof modelOverride === "string" && modelOverride
         ? modelOverride
         : svc.model;
+    // Managed mode owns the endpoint: `apiBase` is ignored so a stale
+    // custom base can never redirect vellum-billed traffic.
     return { backendProvider: providerForImageModelPrefix(model), managed };
   }
   return {
@@ -43,6 +49,7 @@ export function resolveImageGenRouting(
       svc.provider as ImageGenProvider,
     ),
     managed,
+    apiBase: normalizeApiBase(svc.apiBase),
   };
 }
 
@@ -59,8 +66,9 @@ export function resolveImageGenRouting(
 export async function resolveImageGenCredentials(opts: {
   provider: ImageGenProvider;
   managed: boolean;
+  apiBase?: string;
 }): Promise<{ credentials?: ImageGenCredentials; errorHint?: string }> {
-  const { provider, managed } = opts;
+  const { provider, managed, apiBase } = opts;
 
   if (managed) {
     // Resolve platform URL + assistant API key from a single snapshot so
@@ -90,9 +98,28 @@ export async function resolveImageGenCredentials(opts: {
 
   const apiKey = await getProviderKeyAsync(provider);
   if (apiKey) {
-    return { credentials: { type: "direct", apiKey } };
+    // `apiBase` only applies to direct (BYOK) calls; managed proxying is
+    // resolved above and never consults it.
+    return {
+      credentials: apiBase
+        ? { type: "direct", apiKey, apiBase }
+        : { type: "direct", apiKey },
+    };
   }
   return { errorHint: providerKeyHint(provider) };
+}
+
+/**
+ * Normalize a configured custom API base: whitespace-only values count as
+ * unset (provider cloud default), and trailing slashes are stripped so the
+ * provider SDKs' path joins (`{base}/v1beta/...`) never produce `//`.
+ */
+function normalizeApiBase(raw: string | undefined): string | undefined {
+  const trimmed = raw?.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  return trimmed.replace(/\/+$/, "");
 }
 
 function providerKeyHint(provider: ImageGenProvider): string {

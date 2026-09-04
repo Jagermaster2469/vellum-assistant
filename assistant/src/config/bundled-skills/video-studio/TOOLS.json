@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "tools": [
+    {
+      "name": "media_generate_video",
+      "description": "Generate a short AI video from a text prompt using the configured video-generation service. Polls until the video is ready, saves it into the workspace, and returns the saved path plus the provider URL; present a result to the user by embedding its path in your reply as ![description](vellum://workspace/<path>).",
+      "category": "media",
+      "risk": "low",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "prompt": {
+            "type": "string",
+            "description": "A text description of the video to generate: subject, motion, camera work, lighting, mood, and aspect ratio"
+          },
+          "model": {
+            "type": "string",
+            "description": "Concrete model ID to use. Omit to use the configured default (grok-imagine-video). Unknown values return an error listing currently available models."
+          },
+          "style": {
+            "type": "string",
+            "description": "Optional style descriptor appended to the prompt (e.g. cinematic, anime, photorealistic, stop-motion)"
+          }
+        },
+        "required": ["prompt"]
+      },
+      "executor": "tools/media-generate-video.ts",
+      "execution_target": "host"
+    }
+  ]
+}

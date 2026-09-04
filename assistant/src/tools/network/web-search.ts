@@ -1,6 +1,7 @@
 import { getConfig } from "../../config/loader.js";
 import type {
   WebSearchMetadata,
+  WebSearchProviderId,
   WebSearchResultItem,
 } from "../../daemon/message-types/web-activity.js";
 import { RiskLevel } from "../../permissions/types.js";
@@ -37,17 +38,42 @@ import {
 
 const log = getLogger("web-search");
 
+// Cloud-default origins for the BYOK search providers. Every adapter composes
+// its request URL with `resolveProviderApiUrl` so a configured
+// `services["web-search"].apiBase` (a self-hosted / proxied endpoint) replaces
+// the origin while the provider-specific path shape is preserved.
+const BRAVE_API_ORIGIN = "https://api.search.brave.com";
 const BRAVE_SEARCH_PATH = "/res/v1/web/search";
-const BRAVE_API_URL = `https://api.search.brave.com${BRAVE_SEARCH_PATH}`;
-const PERPLEXITY_API_URL = "https://api.perplexity.ai/chat/completions";
-const TAVILY_API_URL = "https://api.tavily.com/search";
-const FIRECRAWL_API_URL = "https://api.firecrawl.dev/v2/search";
+const PERPLEXITY_API_ORIGIN = "https://api.perplexity.ai";
+const PERPLEXITY_CHAT_COMPLETIONS_PATH = "/chat/completions";
+const TAVILY_API_ORIGIN = "https://api.tavily.com";
+const TAVILY_SEARCH_PATH = "/search";
+const FIRECRAWL_API_ORIGIN = "https://api.firecrawl.dev";
+const FIRECRAWL_SEARCH_PATH = "/v2/search";
 const FASTCRW_SEARCH_PATH = "/v1/search";
 // Keenable is keyless by default: the public path needs no key (rate-limited);
 // a key switches to the authenticated path and lifts the cap.
 const KEENABLE_API_BASE_URL = "https://api.keenable.ai";
 const KEENABLE_PUBLIC_SEARCH_PATH = "/v1/search/public";
 const KEENABLE_KEYED_SEARCH_PATH = "/v1/search";
+// X (Twitter) API v2 recent search, authenticated with a Bearer token issued
+// by the X developer portal.
+const X_API_ORIGIN = "https://api.x.com";
+const X_RECENT_SEARCH_PATH = "/2/tweets/search/recent";
+
+/**
+ * Compose a BYOK search-provider request URL. A configured
+ * `services["web-search"].apiBase` replaces the provider's cloud-default
+ * origin (empty/omitted base = cloud default); the provider-specific path is
+ * always appended so a self-hosted endpoint keeps the same request shape.
+ */
+function resolveWebSearchApiUrl(path: string, defaultOrigin: string): string {
+  return resolveProviderApiUrl(
+    getConfig().services["web-search"]?.apiBase,
+    path,
+    defaultOrigin,
+  );
+}
 
 type WebSearchProvider =
   | "perplexity"
@@ -55,7 +81,8 @@ type WebSearchProvider =
   | "tavily"
   | "firecrawl"
   | "keenable"
-  | "fastcrw";
+  | "fastcrw"
+  | "x";
 
 /**
  * Arguments passed to every {@link WebSearchAdapter}. The full superset is
@@ -588,7 +615,7 @@ function keenablePublishedAfterForFreshness(
 
 function errorResult(
   query: string,
-  provider: WebSearchProvider,
+  provider: WebSearchProviderId,
   startedAt: number,
   errorMessage: string,
 ): ToolExecutionResult {
@@ -660,7 +687,12 @@ function backendFailureResult(
   });
 
   if (!classification.isBackendFailure) {
-    return errorResult(query, provider, startedAt, fallback);
+    return errorResult(
+      query,
+      provider as WebSearchProviderId,
+      startedAt,
+      fallback,
+    );
   }
 
   logWebSearchBackendFailure(log, {
@@ -677,7 +709,7 @@ function backendFailureResult(
     activityMetadata: {
       webSearch: {
         query,
-        provider,
+        provider: provider as WebSearchProviderId,
         resultCount: 0,
         durationMs: Date.now() - startedAt,
         results: [],
@@ -729,7 +761,7 @@ async function executeBraveSearch(
   const params = new URLSearchParams(
     braveQueryParams(query, count, offset, freshness),
   );
-  const url = `${BRAVE_API_URL}?${params.toString()}`;
+  const url = `${resolveWebSearchApiUrl(BRAVE_SEARCH_PATH, BRAVE_API_ORIGIN)}?${params.toString()}`;
   const startedAt = Date.now();
 
   for (let attempt = 0; attempt <= DEFAULT_MAX_RETRIES; attempt++) {
@@ -911,18 +943,24 @@ async function executePerplexitySearch(
   for (let attempt = 0; attempt <= DEFAULT_MAX_RETRIES; attempt++) {
     let response: Response;
     try {
-      response = await fetch(PERPLEXITY_API_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
+      response = await fetch(
+        resolveWebSearchApiUrl(
+          PERPLEXITY_CHAT_COMPLETIONS_PATH,
+          PERPLEXITY_API_ORIGIN,
+        ),
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: "sonar",
+            messages: [{ role: "user", content: query }],
+          }),
+          signal,
         },
-        body: JSON.stringify({
-          model: "sonar",
-          messages: [{ role: "user", content: query }],
-        }),
-        signal,
-      });
+      );
     } catch (err) {
       return networkFailureResult(query, "perplexity", startedAt, err, signal);
     }
@@ -1011,16 +1049,19 @@ async function executeTavilySearch(
   for (let attempt = 0; attempt <= DEFAULT_MAX_RETRIES; attempt++) {
     let response: Response;
     try {
-      response = await fetch(TAVILY_API_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-          "X-Client-Name": "vellum-assistant",
+      response = await fetch(
+        resolveWebSearchApiUrl(TAVILY_SEARCH_PATH, TAVILY_API_ORIGIN),
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+            "X-Client-Name": "vellum-assistant",
+          },
+          body: JSON.stringify(body),
+          signal,
         },
-        body: JSON.stringify(body),
-        signal,
-      });
+      );
     } catch (err) {
       return networkFailureResult(query, "tavily", startedAt, err, signal);
     }
@@ -1216,7 +1257,10 @@ function executeFirecrawlSearch(
   signal?: AbortSignal,
 ): Promise<ToolExecutionResult> {
   return executeFirecrawlCompatSearch(query, count, freshness, apiKey, {
-    endpoint: FIRECRAWL_API_URL,
+    endpoint: resolveWebSearchApiUrl(
+      FIRECRAWL_SEARCH_PATH,
+      FIRECRAWL_API_ORIGIN,
+    ),
     provider: "firecrawl",
     displayName: "Firecrawl",
     signal,
@@ -1256,7 +1300,7 @@ async function executeKeenableSearch(
   const path = trimmedKey
     ? KEENABLE_KEYED_SEARCH_PATH
     : KEENABLE_PUBLIC_SEARCH_PATH;
-  const url = `${KEENABLE_API_BASE_URL}${path}`;
+  const url = resolveWebSearchApiUrl(path, KEENABLE_API_BASE_URL);
 
   const body: Record<string, unknown> = { query, mode: "pro" };
   const publishedAfter = keenablePublishedAfterForFreshness(freshness);
@@ -1354,6 +1398,202 @@ async function executeKeenableSearch(
 }
 
 // ----------------------------------------------------------------------------
+// X (Twitter) API v2 recent search
+// ----------------------------------------------------------------------------
+
+interface XTweet {
+  id?: string;
+  text?: string;
+  author_id?: string;
+}
+
+interface XUser {
+  id?: string;
+  name?: string;
+  username?: string;
+}
+
+interface XSearchResponse {
+  data?: XTweet[];
+  includes?: { users?: XUser[] };
+  meta?: { result_count?: number };
+}
+
+/** X API v2 recent search accepts `max_results` in the 10–100 range. */
+const X_MIN_RESULTS = 10;
+const X_MAX_RESULTS = 100;
+
+function xUserForTweet(
+  data: XSearchResponse,
+  tweet: XTweet,
+): XUser | undefined {
+  return data.includes?.users?.find((user) => user.id === tweet.author_id);
+}
+
+function xTweetTitle(tweet: XTweet, user: XUser | undefined): string {
+  if (user?.username) {
+    return user.name?.trim()
+      ? `${user.name.trim()} (@${user.username})`
+      : `@${user.username}`;
+  }
+  return tweet.author_id ? `@${tweet.author_id}` : "X post";
+}
+
+function xTweetUrl(tweet: XTweet, user: XUser | undefined): string {
+  if (!tweet.id) {
+    return "";
+  }
+  return user?.username
+    ? `https://x.com/${user.username}/status/${tweet.id}`
+    : `https://x.com/i/web/status/${tweet.id}`;
+}
+
+function formatXResults(data: XSearchResponse, query: string): string {
+  const tweets = data.data ?? [];
+  if (tweets.length === 0) {
+    return `No results found for "${query}".`;
+  }
+
+  const lines: string[] = [`Web search results for "${query}":\n`];
+  for (let i = 0; i < tweets.length; i++) {
+    const tweet = tweets[i];
+    const user = xUserForTweet(data, tweet);
+    lines.push(`${i + 1}. ${xTweetTitle(tweet, user)}`);
+    const url = xTweetUrl(tweet, user);
+    if (url) {
+      lines.push(`   URL: ${url}`);
+    }
+    if (tweet.text) {
+      lines.push(`   ${tweet.text.trim()}`);
+    }
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
+function buildXMetadata(
+  data: XSearchResponse,
+  query: string,
+  durationMs: number,
+): WebSearchMetadata {
+  const tweets = data.data ?? [];
+  const items: WebSearchResultItem[] = tweets.map((tweet, i) => {
+    const user = xUserForTweet(data, tweet);
+    const url = xTweetUrl(tweet, user);
+    const domain = extractDomain(url);
+    return {
+      rank: i + 1,
+      title: xTweetTitle(tweet, user),
+      url,
+      domain,
+      faviconUrl: faviconUrlForDomain(domain),
+      snippet: tweet.text?.trim(),
+    };
+  });
+  return {
+    query,
+    provider: "x",
+    resultCount: items.length,
+    durationMs,
+    results: items,
+  };
+}
+
+async function executeXSearch(
+  query: string,
+  count: number,
+  apiKey: string,
+  signal?: AbortSignal,
+): Promise<ToolExecutionResult> {
+  const params = new URLSearchParams({
+    query,
+    max_results: String(
+      Math.min(X_MAX_RESULTS, Math.max(X_MIN_RESULTS, count)),
+    ),
+    "tweet.fields": "created_at",
+    "user.fields": "name,username",
+    expansions: "author_id",
+  });
+  const url = `${resolveWebSearchApiUrl(X_RECENT_SEARCH_PATH, X_API_ORIGIN)}?${params.toString()}`;
+  const startedAt = Date.now();
+
+  for (let attempt = 0; attempt <= DEFAULT_MAX_RETRIES; attempt++) {
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${apiKey.trim()}`,
+        },
+        signal,
+      });
+    } catch (err) {
+      return networkFailureResult(query, "x", startedAt, err, signal);
+    }
+
+    if (response.ok) {
+      const data = (await response.json()) as XSearchResponse;
+      const durationMs = Date.now() - startedAt;
+      return {
+        content:
+          wrapUntrustedContent(formatXResults(data, query), {
+            source: "search",
+            sourceDetail: "x",
+          }) + CITATION_INSTRUCTION,
+        isError: false,
+        activityMetadata: {
+          webSearch: buildXMetadata(data, query, durationMs),
+        },
+      };
+    }
+
+    const bodyText = await response.text();
+
+    if (response.status === 401 || response.status === 403) {
+      return errorResult(
+        query,
+        "x",
+        startedAt,
+        "Invalid or expired X API key (X API v2 Bearer token)",
+      );
+    }
+
+    if (response.status === 429 && attempt < DEFAULT_MAX_RETRIES) {
+      const delayMs = getHttpRetryDelay(
+        response,
+        attempt,
+        DEFAULT_BASE_DELAY_MS,
+      );
+      log.warn(
+        { attempt: attempt + 1, delayMs },
+        "X Search rate limited, retrying",
+      );
+      await sleep(delayMs);
+      continue;
+    }
+
+    log.warn({ status: response.status }, "X Search API error");
+    return backendFailureResult(
+      query,
+      "x",
+      startedAt,
+      { statusCode: response.status, error: rawBodyDetail(bodyText) },
+      response.status === 429
+        ? "X Search rate limit exceeded after retries. Try again shortly."
+        : `X Search API returned status ${response.status}`,
+    );
+  }
+
+  return backendFailureResult(
+    query,
+    "x",
+    startedAt,
+    { statusCode: 429 },
+    "X Search rate limit exceeded after retries. Try again shortly.",
+  );
+}
+
+// ----------------------------------------------------------------------------
 // Adapter registry
 //
 // Each built-in provider exposes a {@link WebSearchAdapter} wrapping its
@@ -1414,9 +1654,17 @@ const keenableSearchAdapter: WebSearchAdapter = {
 const fastcrwSearchAdapter: WebSearchAdapter = {
   id: "fastcrw",
   providerKeyName: "fastcrw",
-  fallbackOrder: 6,
+  fallbackOrder: 7,
   execute: ({ query, count, freshness, apiKey, signal }) =>
     executeFastcrwSearch(query, count, freshness, apiKey, signal),
+};
+
+const xSearchAdapter: WebSearchAdapter = {
+  id: "x",
+  providerKeyName: "x",
+  fallbackOrder: 6,
+  execute: ({ query, count, apiKey, signal }) =>
+    executeXSearch(query, count, apiKey, signal),
 };
 
 /**
@@ -1431,6 +1679,7 @@ const WEB_SEARCH_ADAPTERS: Record<WebSearchProvider, WebSearchAdapter> = {
   firecrawl: firecrawlSearchAdapter,
   keenable: keenableSearchAdapter,
   fastcrw: fastcrwSearchAdapter,
+  x: xSearchAdapter,
 };
 
 /**
@@ -1462,7 +1711,7 @@ export const webSearchTool = {
       count: {
         type: "number",
         description:
-          "Number of results to return (1-20, default 10). Used with Brave, Tavily, Firecrawl, Keenable, and fastCRW providers.",
+          "Number of results to return (1-20, default 10). Used with Brave, Tavily, Firecrawl, Keenable, fastCRW, and X providers.",
       },
       offset: {
         type: "number",
@@ -1588,7 +1837,7 @@ export const webSearchTool = {
           query,
           provider,
           startedAt,
-          "No web search API key configured. Set it via `keys set perplexity <key>`, `keys set brave <key>`, `keys set tavily <key>`, `keys set firecrawl <key>`, or `keys set fastcrw <key>`, or configure it from the Settings page under API Keys. Or switch the web-search provider to Keenable, which works without a key.",
+          "No web search API key configured. Set it via `keys set perplexity <key>`, `keys set brave <key>`, `keys set tavily <key>`, `keys set firecrawl <key>`, `keys set x <key>`, or `keys set fastcrw <key>`, or configure it from the Settings page under API Keys. Or switch the web-search provider to Keenable, which works without a key.",
         );
       }
     }

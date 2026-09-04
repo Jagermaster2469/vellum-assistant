@@ -74,6 +74,16 @@
       "privacyPolicyUrl": "https://fastcrw.com/privacy",
       "supportsApiBase": true,
       "defaultApiBase": "https://api.fastcrw.com"
+    },
+    {
+      "id": "x",
+      "displayName": "X Search",
+      "kind": "byok",
+      "apiKeyPrefix": "xai-...",
+      "envVar": "XAI_API_KEY",
+      "secretKey": "x",
+      "fallbackOrder": 7,
+      "privacyPolicyUrl": "https://x.ai/legal/privacy-policy"
     }
   ]
 }

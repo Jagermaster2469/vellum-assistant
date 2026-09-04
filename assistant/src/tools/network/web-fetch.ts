@@ -49,7 +49,11 @@ import {
 
 const log = getLogger("web-fetch");
 
-const FIRECRAWL_SCRAPE_API_URL = "https://api.firecrawl.dev/v2/scrape";
+// Cloud-default origin for Firecrawl hosted scrape. A configured
+// `services["web-fetch"].apiBase` replaces it via `resolveProviderApiUrl`
+// (same treatment as fastCRW self-hosting).
+const FIRECRAWL_API_ORIGIN = "https://api.firecrawl.dev";
+const FIRECRAWL_SCRAPE_PATH = "/v2/scrape";
 const FASTCRW_SCRAPE_PATH = "/v1/scrape";
 
 const DEFAULT_TIMEOUT_SECONDS = 20;
@@ -1473,9 +1477,15 @@ export async function executeFirecrawlScrape(
   input: Record<string, unknown>,
   options: { apiKey: string; signal?: AbortSignal },
 ): Promise<ToolExecutionResult> {
+  const apiBase = getConfig().services["web-fetch"]?.apiBase;
+  const endpoint = resolveProviderApiUrl(
+    apiBase,
+    FIRECRAWL_SCRAPE_PATH,
+    FIRECRAWL_API_ORIGIN,
+  );
   return executeFirecrawlCompatScrape(input, {
     apiKey: options.apiKey,
-    endpoint: FIRECRAWL_SCRAPE_API_URL,
+    endpoint,
     provider: "firecrawl",
     displayName: "Firecrawl",
     signal: options.signal,

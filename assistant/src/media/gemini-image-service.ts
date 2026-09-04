@@ -208,8 +208,15 @@ export async function generateImage(
     };
   }
 
-  // Direct Gemini API path — use the SDK with API key auth.
-  const client = new GoogleGenAI({ apiKey: credentials.apiKey });
+  // Direct Gemini API path — use the SDK with API key auth. A configured
+  // custom API base (e.g. a Gemini-compatible image proxy) overrides the
+  // SDK's default Gemini endpoint via `httpOptions.baseUrl`.
+  const client = new GoogleGenAI({
+    apiKey: credentials.apiKey,
+    ...(credentials.apiBase
+      ? { httpOptions: { baseUrl: credentials.apiBase } }
+      : {}),
+  });
 
   const makeSingleCall = async () => {
     const response = await client.models.generateContent({

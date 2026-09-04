@@ -127,13 +127,15 @@ export async function run(
   // to the model's backend (e.g. `gpt-image-2` under a gemini config routes
   // to OpenAI), and provider "vellum" runs managed with a model-derived
   // backend.
-  const { backendProvider: provider, managed } = resolveImageGenRouting(
-    svc,
-    modelOverride,
-  );
+  const {
+    backendProvider: provider,
+    managed,
+    apiBase,
+  } = resolveImageGenRouting(svc, modelOverride);
   const { credentials, errorHint } = await resolveImageGenCredentials({
     provider,
     managed,
+    apiBase,
   });
   if (!credentials) {
     return {

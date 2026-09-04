@@ -1,0 +1,27 @@
+{
+  "version": 1,
+  "tools": [
+    {
+      "name": "speak_text",
+      "description": "Convert text to speech audio using the configured TTS provider. Saves the audio file into the workspace and returns its path; deliver it to the user by embedding the path in your reply as [listen](vellum://workspace/<path>).",
+      "category": "voice",
+      "risk": "low",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "The text to synthesize into speech"
+          },
+          "voice_id": {
+            "type": "string",
+            "description": "Optional provider-specific voice identifier override (e.g. an ElevenLabs voice ID). Omit to use the configured default voice."
+          }
+        },
+        "required": ["text"]
+      },
+      "executor": "tools/speak-text.ts",
+      "execution_target": "host"
+    }
+  ]
+}

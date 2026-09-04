@@ -219,6 +219,13 @@ export const SttServiceSchema = z
       .describe(
         "BCP-47 language code (e.g. 'en-US', 'hi') or 'multi' for code-switching across languages. Defaults to 'multi'; providers that detect natively ignore it",
       ),
+    /**
+     * Custom base URL for the active STT provider (BYOK adapters:
+     * deepgram, openai-whisper, xai). Empty / omitted uses the provider's
+     * cloud default. Ignored by the managed relay and by SDK-only adapters
+     * that do not accept a custom origin.
+     */
+    baseUrl: z.string().optional(),
     providers: SttProvidersSchema.default({}),
     roles: SttRolesSchema.default({}),
   })

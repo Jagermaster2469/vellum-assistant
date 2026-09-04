@@ -428,6 +428,17 @@ export function geminiCacheExtras(config: AssistantConfig): string[] {
   return extras;
 }
 
+/**
+ * The custom API base for direct (BYOK) embedding requests, or undefined to
+ * use each provider's default endpoint. Blank values are treated as unset so
+ * an empty `apiBase` config key behaves like the key being absent. Managed
+ * proxy backends ignore this and keep their own platform base URL.
+ */
+function resolveEmbeddingsApiBase(config: AssistantConfig): string | undefined {
+  const value = config.memory.embeddings.apiBase?.trim();
+  return value ? value : undefined;
+}
+
 /** Build (or reuse) the direct-API Gemini backend for the given key. */
 function getDirectGeminiBackend(
   config: AssistantConfig,
@@ -443,6 +454,7 @@ function getDirectGeminiBackend(
         {
           taskType: config.memory.embeddings.geminiTaskType,
           dimensions: config.memory.embeddings.geminiDimensions,
+          apiBase: resolveEmbeddingsApiBase(config),
         },
       ),
     geminiCacheExtras(config),
@@ -512,6 +524,7 @@ export async function selectEmbeddingBackend(
         () =>
           new OllamaEmbeddingBackend(config.memory.embeddings.ollamaModel, {
             apiKey: ollamaKey,
+            baseUrl: resolveEmbeddingsApiBase(config),
           }),
       ),
       reason: null,
@@ -573,6 +586,7 @@ export async function selectEmbeddingBackend(
               new OpenAIEmbeddingBackend(
                 openaiKey,
                 config.memory.embeddings.openaiModel,
+                resolveEmbeddingsApiBase(config),
               ),
           ),
           reason: null,
@@ -615,6 +629,7 @@ export async function selectEmbeddingBackend(
             () =>
               new OllamaEmbeddingBackend(config.memory.embeddings.ollamaModel, {
                 apiKey: ollamaKey,
+                baseUrl: resolveEmbeddingsApiBase(config),
               }),
           ),
           reason: null,
@@ -997,6 +1012,7 @@ async function selectFallbackBackends(
                 new OpenAIEmbeddingBackend(
                   openaiKey,
                   config.memory.embeddings.openaiModel,
+                  resolveEmbeddingsApiBase(config),
                 ),
             ),
           );
@@ -1053,6 +1069,7 @@ async function selectFallbackBackends(
                   config.memory.embeddings.ollamaModel,
                   {
                     apiKey: ollamaKey,
+                    baseUrl: resolveEmbeddingsApiBase(config),
                   },
                 ),
             ),

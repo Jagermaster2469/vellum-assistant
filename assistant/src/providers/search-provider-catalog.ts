@@ -163,6 +163,16 @@ export const SEARCH_PROVIDER_CATALOG: readonly SearchProviderCatalogEntry[] = [
     supportsApiBase: true,
     defaultApiBase: "https://api.fastcrw.com",
   },
+  {
+    id: "x",
+    displayName: "X Search",
+    kind: "byok",
+    apiKeyPrefix: "xai-...",
+    envVar: "XAI_API_KEY",
+    secretKey: "x",
+    fallbackOrder: 7,
+    privacyPolicyUrl: "https://x.ai/legal/privacy-policy",
+  },
 ];
 
 /** Provider ids accepted by the web-search config schema. */

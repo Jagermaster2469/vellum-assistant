@@ -12,9 +12,12 @@ export class OpenAIEmbeddingBackend implements EmbeddingBackend {
   readonly model: string;
   private readonly client: OpenAI;
 
-  constructor(apiKey: string, model: string) {
+  constructor(apiKey: string, model: string, apiBase?: string) {
     this.model = model;
-    this.client = new OpenAI({ apiKey });
+    this.client = new OpenAI({
+      apiKey,
+      ...(apiBase ? { baseURL: apiBase } : {}),
+    });
   }
 
   async embed(

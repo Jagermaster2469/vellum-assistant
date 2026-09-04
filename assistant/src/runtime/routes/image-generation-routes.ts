@@ -96,15 +96,17 @@ async function handleImageGenerationGenerate(
 
   // Backend and managed-ness resolve together; an explicit model override
   // re-routes to the model's backend.
-  const { backendProvider: provider, managed } = resolveImageGenRouting(
-    svc,
-    resolvedModel,
-  );
+  const {
+    backendProvider: provider,
+    managed,
+    apiBase,
+  } = resolveImageGenRouting(svc, resolvedModel);
 
   // Resolve credentials
   const { credentials, errorHint } = await resolveImageGenCredentials({
     provider,
     managed,
+    apiBase,
   });
 
   if (!credentials) {

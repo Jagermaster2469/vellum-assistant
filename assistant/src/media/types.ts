@@ -3,6 +3,13 @@ export type ImageGenProvider = "gemini" | "openai";
 export interface DirectCredentials {
   type: "direct";
   apiKey: string;
+  /**
+   * Custom API base for BYOK generation (e.g. a self-hosted
+   * OpenAI-compatible or Gemini-compatible image endpoint). Absent / empty
+   * uses the provider's cloud default. Managed-proxy credentials carry
+   * `baseUrl` instead and never consult `apiBase`.
+   */
+  apiBase?: string;
 }
 export interface ManagedProxyCredentials {
   type: "managed-proxy";

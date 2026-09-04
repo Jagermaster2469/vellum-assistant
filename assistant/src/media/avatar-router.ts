@@ -12,10 +12,11 @@ export async function generateAvatar(
   const config = getConfig();
   const svc = config.services["image-generation"];
 
-  const { backendProvider, managed } = resolveImageGenRouting(svc);
+  const { backendProvider, managed, apiBase } = resolveImageGenRouting(svc);
   const { credentials, errorHint } = await resolveImageGenCredentials({
     provider: backendProvider,
     managed,
+    apiBase,
   });
 
   if (!credentials) {

@@ -104,7 +104,12 @@ export async function generateImageOpenAI(
           apiKey: credentials.assistantApiKey,
           baseURL: credentials.baseUrl,
         })
-      : new OpenAI({ apiKey: credentials.apiKey });
+      : new OpenAI({
+          apiKey: credentials.apiKey,
+          // Custom API base for BYOK generation (e.g. a self-hosted
+          // OpenAI-compatible image endpoint). Absent → SDK cloud default.
+          ...(credentials.apiBase ? { baseURL: credentials.apiBase } : {}),
+        });
 
   const title = deriveTitleFromPrompt(request.prompt);
 

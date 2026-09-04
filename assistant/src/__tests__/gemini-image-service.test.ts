@@ -16,6 +16,7 @@ interface FakeResponse {
 }
 
 let lastGenerateParams: Record<string, unknown> | null = null;
+let lastConstructorOptions: Record<string, unknown> | null = null;
 let fakeResponse: FakeResponse = {};
 let shouldThrow: Error | null = null;
 let generateCallCount = 0;
@@ -31,7 +32,9 @@ class FakeApiError extends Error {
 
 mock.module("@google/genai", () => ({
   GoogleGenAI: class MockGoogleGenAI {
-    constructor(_opts: Record<string, unknown>) {}
+    constructor(opts: Record<string, unknown>) {
+      lastConstructorOptions = opts;
+    }
     models = {
       generateContent: async (params: Record<string, unknown>) => {
         lastGenerateParams = params;
@@ -93,6 +96,7 @@ function imageWithTextResponse(
 
 beforeEach(() => {
   lastGenerateParams = null;
+  lastConstructorOptions = null;
   fakeResponse = imageResponse();
   shouldThrow = null;
   generateCallCount = 0;
@@ -255,7 +259,7 @@ describe("generateImage", () => {
     fakeResponse = imageResponse();
 
     await generateImage(
-      { type: "direct", apiKey: "test-key" },
+      { type: "direct", apiKey: "my-gemini-key" },
       {
         prompt: "test",
         mode: "generate",
@@ -265,6 +269,41 @@ describe("generateImage", () => {
     const config = (lastGenerateParams as Record<string, unknown>)
       .config as Record<string, unknown>;
     expect(config.responseModalities).toEqual(["TEXT", "IMAGE"]);
+  });
+
+  test("direct credentials with apiBase set httpOptions.baseUrl on the SDK client", async () => {
+    fakeResponse = imageResponse();
+
+    await generateImage(
+      {
+        type: "direct",
+        apiKey: "my-gemini-key",
+        apiBase: "https://gemini-proxy.example.com",
+      },
+      { prompt: "test", mode: "generate" },
+    );
+
+    expect(lastConstructorOptions).not.toBeNull();
+    expect((lastConstructorOptions as Record<string, unknown>).apiKey).toBe(
+      "my-gemini-key",
+    );
+    const httpOptions = (lastConstructorOptions as Record<string, unknown>)
+      .httpOptions as Record<string, unknown>;
+    expect(httpOptions.baseUrl).toBe("https://gemini-proxy.example.com");
+  });
+
+  test("direct credentials without apiBase construct the SDK with no httpOptions", async () => {
+    fakeResponse = imageResponse();
+
+    await generateImage(
+      { type: "direct", apiKey: "my-gemini-key" },
+      { prompt: "test", mode: "generate" },
+    );
+
+    expect(lastConstructorOptions).not.toBeNull();
+    expect(
+      (lastConstructorOptions as Record<string, unknown>).httpOptions,
+    ).toBeUndefined();
   });
 });
 

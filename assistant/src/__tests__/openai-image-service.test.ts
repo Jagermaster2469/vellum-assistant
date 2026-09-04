@@ -273,6 +273,27 @@ describe("generateImageOpenAI", () => {
     );
   });
 
+  test("direct credentials with apiBase set baseURL on the OpenAI client", async () => {
+    fakeResponse = imageResponse({ b64_json: "x" });
+
+    await generateImageOpenAI(
+      {
+        type: "direct",
+        apiKey: "my-direct-key",
+        apiBase: "https://openai-proxy.example.com/v1",
+      },
+      { prompt: "test", mode: "generate" },
+    );
+
+    expect(lastConstructorOptions).not.toBeNull();
+    expect((lastConstructorOptions as Record<string, unknown>).apiKey).toBe(
+      "my-direct-key",
+    );
+    expect((lastConstructorOptions as Record<string, unknown>).baseURL).toBe(
+      "https://openai-proxy.example.com/v1",
+    );
+  });
+
   test("title is derived from the first 6 words of the prompt and sanitized", async () => {
     fakeResponse = imageResponse({ b64_json: "one" }, { b64_json: "two" });
 

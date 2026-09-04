@@ -28,6 +28,17 @@ export const MemoryEmbeddingsConfigSchema = z
       .describe(
         "Embedding provider — 'auto' selects the best available provider",
       ),
+    // Custom API base for direct (BYOK) embedding endpoints — e.g. a
+    // self-hosted OpenAI-compatible or Gemini-compatible endpoint, or a
+    // non-default Ollama host. Empty / omitted uses each provider's default
+    // endpoint (Ollama falls back to OLLAMA_BASE_URL, then localhost).
+    // Ignored for the managed platform proxy path.
+    apiBase: z
+      .string({ error: "memory.embeddings.apiBase must be a string" })
+      .optional()
+      .describe(
+        "Custom API base URL for direct OpenAI/Gemini/Ollama embedding endpoints",
+      ),
     localModel: z
       .string({ error: "memory.embeddings.localModel must be a string" })
       .default("Xenova/bge-small-en-v1.5")

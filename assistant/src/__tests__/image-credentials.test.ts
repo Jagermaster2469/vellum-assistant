@@ -124,6 +124,23 @@ describe("resolveImageGenCredentials", () => {
       });
     });
 
+    test("includes apiBase on direct credentials when configured", async () => {
+      mockProviderKey = "openai-api-key";
+
+      const result = await resolveImageGenCredentials({
+        provider: "openai",
+        managed: false,
+        apiBase: "https://openai-proxy.example.com/v1",
+      });
+
+      expect(result.errorHint).toBeUndefined();
+      expect(result.credentials).toEqual({
+        type: "direct",
+        apiKey: "openai-api-key",
+        apiBase: "https://openai-proxy.example.com/v1",
+      });
+    });
+
     test("returns errorHint mentioning 'OpenAI API key' when no key is set", async () => {
       mockProviderKey = undefined;
 
@@ -190,5 +207,39 @@ describe("resolveImageGenRouting", () => {
 
     expect(result.credentials).toBeUndefined();
     expect(result.errorHint).toContain("Managed proxy is not available");
+  });
+
+  test("BYOK providers thread a configured apiBase through routing", () => {
+    expect(
+      resolveImageGenRouting({
+        provider: "gemini",
+        model: "gemini-3.1-flash-image-preview",
+        apiBase: "https://img.example.com/",
+      }),
+    ).toEqual({
+      backendProvider: "gemini",
+      managed: false,
+      apiBase: "https://img.example.com",
+    });
+  });
+
+  test("vellum ignores apiBase (managed proxy owns the endpoint)", () => {
+    const routing = resolveImageGenRouting({
+      provider: "vellum",
+      model: "gemini-3.1-flash-image-preview",
+      apiBase: "https://img.example.com",
+    });
+    expect(routing.managed).toBe(true);
+    expect(routing.backendProvider).toBe("gemini");
+    expect(routing.apiBase).toBeUndefined();
+  });
+
+  test("whitespace-only apiBase counts as unset", () => {
+    const routing = resolveImageGenRouting({
+      provider: "openai",
+      model: "gpt-image-2",
+      apiBase: "   ",
+    });
+    expect(routing.apiBase).toBeUndefined();
   });
 });

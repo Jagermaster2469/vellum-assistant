@@ -19,6 +19,13 @@ export interface GeminiEmbeddingOptions {
   /** When set, routes requests through the managed proxy at this base URL. */
   managedBaseUrl?: string;
   /**
+   * Custom API base URL for direct (BYOK) requests — e.g. a Gemini-compatible
+   * proxy. When set, requests go to `<apiBase>/v1beta/models/...:embedContent`
+   * with bearer auth instead of the Google default endpoint with a `?key=`
+   * query parameter. Ignored when `managedBaseUrl` is set.
+   */
+  apiBase?: string;
+  /**
    * Milliseconds to sleep between sequential embed calls to yield to the
    * event loop. Defaults to 5000 in production; set to 0 in tests.
    */
@@ -32,6 +39,7 @@ export class GeminiEmbeddingBackend implements EmbeddingBackend {
   private readonly taskType?: EmbeddingTaskType;
   private readonly dimensions?: number;
   private readonly managedBaseUrl?: string;
+  private readonly apiBase?: string;
   private readonly interCallDelayMs: number;
 
   constructor(apiKey: string, model: string, options?: GeminiEmbeddingOptions) {
@@ -40,6 +48,7 @@ export class GeminiEmbeddingBackend implements EmbeddingBackend {
     this.taskType = options?.taskType;
     this.dimensions = options?.dimensions;
     this.managedBaseUrl = options?.managedBaseUrl;
+    this.apiBase = options?.apiBase;
     this.interCallDelayMs = options?.interCallDelayMs ?? 100;
   }
 
@@ -92,13 +101,16 @@ export class GeminiEmbeddingBackend implements EmbeddingBackend {
       body.outputDimensionality = this.dimensions;
     }
 
-    const url = this.managedBaseUrl
-      ? `${this.managedBaseUrl}/v1beta/models/${encodeURIComponent(this.model)}:embedContent`
+    // Route direct requests through a custom API base (BYOK proxy) when set;
+    // the managed proxy URL always takes precedence for platform assistants.
+    const baseUrl = this.managedBaseUrl ?? this.apiBase;
+    const url = baseUrl
+      ? `${baseUrl}/v1beta/models/${encodeURIComponent(this.model)}:embedContent`
       : `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(this.model)}:embedContent?key=${encodeURIComponent(this.apiKey)}`;
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
-    if (this.managedBaseUrl) {
+    if (baseUrl) {
       headers["Authorization"] = `Bearer ${this.apiKey}`;
     }
     const response = await fetch(url, {
