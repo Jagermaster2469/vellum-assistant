@@ -73,7 +73,11 @@ const ImageGenerationServiceSchema = z.object({
   apiBase: z.string().optional(),
 });
 
-const VALID_VIDEO_GEN_PROVIDERS = ["vellum", "xai"] as const;
+const VALID_VIDEO_GEN_PROVIDERS = [
+  "vellum",
+  "xai",
+  "openai-compatible",
+] as const;
 
 /**
  * Video generation mirrors image generation: `vellum` routes through the

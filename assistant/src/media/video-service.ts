@@ -138,6 +138,9 @@ export async function generateVideo(
         'Switch the provider to "xai" and configure your own xAI API key in Settings → Models & Services to use this tool.',
     );
   }
+  // `openai-compatible` reuses the xAI-shaped async API (POST
+  // `{apiBase}/videos/generations`, poll `GET {apiBase}/videos/{id}`) against
+  // a custom endpoint with the `openai` vault key (keyless-local allowed).
   return generateVideoXai(request);
 }
 
@@ -178,17 +181,24 @@ async function generateVideoXai(
     ? `${request.prompt.trim()}, ${request.style.trim()}`
     : request.prompt.trim();
 
-  const apiKey = await getProviderKeyAsync("xai");
+  const keyProvider = svc.provider === "openai-compatible" ? "openai" : "xai";
+  const apiKey = await getProviderKeyAsync(keyProvider);
   if (!apiKey) {
-    throw new VideoGenKeyMissingError(
-      "No xAI API key configured. Set your xAI API key in Settings → Models & Services to enable video generation.",
-    );
+    const keylessLocal =
+      svc.provider === "openai-compatible" && Boolean(svc.apiBase?.trim());
+    if (!keylessLocal) {
+      throw new VideoGenKeyMissingError(
+        "No xAI API key configured. Set your xAI API key in Settings → Models & Services to enable video generation.",
+      );
+    }
   }
 
-  const authHeaders = {
-    Authorization: `Bearer ${apiKey}`,
+  const authHeaders: Record<string, string> = {
     "Content-Type": "application/json",
   };
+  if (apiKey?.trim()) {
+    authHeaders.Authorization = `Bearer ${apiKey.trim()}`;
+  }
 
   // 1. Start the generation.
   let create: XaiCreateVideoResponse;
@@ -207,9 +217,7 @@ async function generateVideoXai(
     if (error instanceof VideoGenHttpError) {
       throw error;
     }
-    throw new Error(
-      `Failed to start video generation: ${errorMessage(error)}`,
-    );
+    throw new Error(`Failed to start video generation: ${errorMessage(error)}`);
   }
 
   const requestId = create.request_id ?? create.id;
