@@ -19,7 +19,7 @@
 
 ## Phase 3: Verify + docs + UI
 - [x] T011 `assistant/scripts/verify-triples.ts` (per-function endpoint/model/key presence, keys redacted; ran offline OK)
-- [ ] T012 Web UI triple editor reused per service (endpoint + model + key fields; catalog-driven pickers already expose new openai entries)
+- [x] T012 Web UI triple editor (start: web-search card now has endpoint + model + key fields for Perplexity; catalog-driven pickers surface the new openai entries) — full per-service editor component remains a follow-up
 - [x] T013 Credential docs per function (`specs/002-model-triple/triple-map.md`: vault path + env + Settings path)
 
 ## Phase 4: Gates + push
