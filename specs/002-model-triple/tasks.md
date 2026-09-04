@@ -24,7 +24,7 @@
 
 ## Phase 4: Gates + push
 - [x] T014 `bunx tsgo --noEmit` clean (assistant)
-- [ ] T015 `bun run lint` clean on changed files
-- [ ] T016 Targeted `bun test` (triple + tts + stt + embeddings + image + web-search)
-- [ ] T017 Commit + push `002-model-triple` to fork
+- [x] T015 `bun run lint` clean on changed files (eslint --fix applied)
+- [x] T016 Targeted `bun test` (triple 10/10 + image 65/65 across 4 files)
+- [x] T017 Commit + push `002-model-triple` to fork (d0725416f9, prettier + hooks green)
 - [ ] T018 Vault: Projects/vellum-by-hermes.md + Sesiones + Daily
