@@ -6,13 +6,20 @@ import { getLogger } from "../util/logger.js";
 
 const log = getLogger("fish-audio-client");
 
+/** Cloud default for the Fish Audio REST API origin. */
+const FISH_AUDIO_API_BASE = "https://api.fish.audio";
+
 /**
  * Config accepted by the synthesis client. Widens the user-facing format
  * union with `"pcm"` (raw 16-bit LE, no container), which PCM-requesting
  * callers substitute internally — it is not part of the config schema.
+ * `apiBase` optionally overrides the Fish Audio cloud endpoint (BYOK
+ * self-hosted / proxy deployments).
  */
 export type FishAudioSynthesisConfig = Omit<FishAudioConfig, "format"> & {
   format: FishAudioConfig["format"] | "pcm";
+  /** Custom API base URL. Empty / omitted uses https://api.fish.audio. */
+  apiBase?: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -71,7 +78,10 @@ export async function synthesizeWithFishAudio(
     "Starting Fish Audio synthesis",
   );
 
-  const response = await fetch("https://api.fish.audio/v1/tts", {
+  // A configured apiBase (self-hosted / proxy) wins over the cloud default.
+  const apiBase = config.apiBase?.trim() || FISH_AUDIO_API_BASE;
+
+  const response = await fetch(`${apiBase}/v1/tts`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,

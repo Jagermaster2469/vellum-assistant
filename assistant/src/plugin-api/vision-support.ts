@@ -23,8 +23,13 @@
 
 import { resolveDefaultProfileForProvider } from "../config/default-profile-catalog.js";
 import { getConfig } from "../config/loader.js";
-import { resolveEntryProviderKind } from "../providers/connection-resolution.js";
+import { getDb } from "../persistence/db-connection.js";
+import {
+  resolveEntryConnectionName,
+  resolveEntryProviderKind,
+} from "../providers/connection-resolution.js";
 import { ROUTING_IDENTITY_PROVIDERS } from "../providers/inference/auth.js";
+import { getConnection } from "../providers/inference/connections.js";
 import {
   getCatalogProviderForModel,
   PROVIDER_CATALOG,
@@ -111,12 +116,17 @@ function profileVision(profileKey: string): boolean | undefined {
  * Resolve whether a concrete (non-mix) profile entry supports vision from its
  * own `(provider, model)`, inferring the provider from the catalog when only
  * the model is set. Returns `undefined` when the effective `(provider, model)`
- * can't be determined or isn't in the catalog — an entry that omits its model
- * is not a usable resolution target, so it fails safe to "caption".
+ * can't be determined — an entry that omits its model is not a usable
+ * resolution target, so it fails safe to "caption".
+ *
+ * Custom-endpoint models are not in the catalog: when the effective provider
+ * resolves to `openai-compatible`, the capability comes from the connection
+ * row's declared `supportsVision` flag (opt-in), never from the catalog.
  */
 function resolveEntryVision(entry: {
   provider?: string;
   model?: string;
+  provider_connection?: string;
 }): boolean | undefined {
   // Routing identities ("vellum"/"chatgpt") are not catalog providers; the
   // model's catalog owner is the capability source for them.
@@ -149,5 +159,28 @@ function resolveEntryVision(entry: {
     (p) => p.id === effectiveProvider,
   );
   const catalogModel = catalogProvider?.models.find((m) => m.id === model);
-  return catalogModel?.supportsVision;
+  if (catalogModel != null) {
+    return catalogModel.supportsVision;
+  }
+
+  // Custom endpoints declare their own models: the connection row is the only
+  // capability source. Resolve the row through the entry's
+  // `provider_connection` (or an entry-name provider) and read the declared
+  // model's flag; no declaration = non-vision (fail-safe).
+  if (effectiveProvider === "openai-compatible") {
+    try {
+      const connectionName =
+        entry.provider_connection ??
+        resolveEntryConnectionName(declared ?? "") ??
+        undefined;
+      if (connectionName) {
+        const row = getConnection(getDb(), connectionName);
+        const declaredModel = row?.models?.find((m) => m.id === model);
+        return declaredModel?.supportsVision ?? false;
+      }
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
 }

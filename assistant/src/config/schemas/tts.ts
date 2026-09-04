@@ -131,6 +131,16 @@ export const TtsElevenLabsProviderConfigSchema = z
       "elevenlabs",
       "values are ElevenLabs voice IDs.",
     ),
+    // Custom API base for BYOK deployments (e.g. a self-hosted or proxy
+    // endpoint). Empty / omitted uses the provider's cloud default.
+    apiBase: z
+      .string({
+        error: "services.tts.providers.elevenlabs.apiBase must be a string",
+      })
+      .optional()
+      .describe(
+        "Custom API base URL for ElevenLabs. Empty / omitted uses the provider's cloud default.",
+      ),
   })
   .describe("ElevenLabs provider configuration under services.tts");
 
@@ -179,6 +189,16 @@ export const TtsFishAudioProviderConfigSchema = z
       .max(2.0, "services.tts.providers.fish-audio.speed must be <= 2.0")
       .default(1.0)
       .describe("Playback speed multiplier (0.5 = slower, 2.0 = faster)"),
+    // Custom API base for BYOK deployments (e.g. a self-hosted or proxy
+    // endpoint). Empty / omitted uses the provider's cloud default.
+    apiBase: z
+      .string({
+        error: "services.tts.providers.fish-audio.apiBase must be a string",
+      })
+      .optional()
+      .describe(
+        "Custom API base URL for Fish Audio. Empty / omitted uses the provider's cloud default.",
+      ),
   })
   .describe("Fish Audio provider configuration under services.tts");
 
@@ -206,6 +226,16 @@ export const TtsDeepgramProviderConfigSchema = z
       "deepgram",
       "values are Deepgram TTS model identifiers (e.g. an aura-2 voice).",
     ),
+    // Custom API base for BYOK deployments (e.g. a self-hosted or proxy
+    // endpoint). Empty / omitted uses the provider's cloud default.
+    apiBase: z
+      .string({
+        error: "services.tts.providers.deepgram.apiBase must be a string",
+      })
+      .optional()
+      .describe(
+        "Custom API base URL for Deepgram. Empty / omitted uses the provider's cloud default.",
+      ),
   })
   .describe("Deepgram provider configuration under services.tts");
 
@@ -261,6 +291,17 @@ export const TtsXaiProviderConfigSchema = z
       })
       .default(128000)
       .describe("MP3 bit rate (ignored for non-MP3 codecs)"),
+    // Custom API base for BYOK deployments (e.g. a self-hosted or proxy
+    // endpoint). Empty / omitted uses the provider's cloud default. The
+    // streaming WebSocket endpoint is derived from the same base.
+    apiBase: z
+      .string({
+        error: "services.tts.providers.xai.apiBase must be a string",
+      })
+      .optional()
+      .describe(
+        "Custom API base URL for xAI. Empty / omitted uses the provider's cloud default.",
+      ),
   })
   .describe("xAI provider configuration under services.tts");
 

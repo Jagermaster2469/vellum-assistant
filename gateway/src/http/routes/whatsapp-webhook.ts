@@ -48,6 +48,77 @@ const log = getLogger("whatsapp-webhook");
 
 const rejectionLimiter = new RejectionRateLimiter();
 
+/**
+ * Hermes-parity admission gate for WhatsApp: allowlist (`allowFrom`), group
+ * behavior (`groupPolicy`: open | mention | allowlist), free-response chats,
+ * and mention patterns — all read from workspace config (`whatsapp.*`).
+ * Returns true when the message may proceed to the normal admission/trust
+ * layers. Config reads fail open (no cache → admit; downstream layers still
+ * apply). Gated messages are dropped silently, matching Hermes.
+ */
+function whatsappAdmissionAllows(
+  event: {
+    message: { content: string; conversationExternalId: string };
+    actor: { actorExternalId: string };
+    source: { chatType?: string };
+  },
+  configFile: ConfigFileCache | undefined,
+): boolean {
+  if (!configFile) {
+    return true;
+  }
+  const allowFrom = configFile.getStringArray("whatsapp", "allowFrom") ?? [];
+  const freeResponseChats =
+    configFile.getStringArray("whatsapp", "freeResponseChats") ?? [];
+  const groupPolicy = configFile.getString("whatsapp", "groupPolicy") ?? "open";
+  const mentionPatterns =
+    configFile.getStringArray("whatsapp", "mentionPatterns") ?? [];
+  const assistantPhone = configFile.getString("whatsapp", "phoneNumber") ?? "";
+
+  const sender = event.actor.actorExternalId;
+  const chat = event.message.conversationExternalId;
+  const content = event.message.content;
+  const isGroup = event.source.chatType === "group";
+
+  // A non-empty allowlist turns everyone else away at the gate, on every
+  // surface (DMs included).
+  if (allowFrom.length > 0 && !allowFrom.includes(sender)) {
+    return false;
+  }
+
+  if (!isGroup) {
+    return true;
+  }
+  if (freeResponseChats.includes(chat)) {
+    return true;
+  }
+
+  const isMention = (() => {
+    if (mentionPatterns.length > 0) {
+      return mentionPatterns.some((pattern) => {
+        try {
+          return new RegExp(pattern).test(content);
+        } catch {
+          return false;
+        }
+      });
+    }
+    // Fallback: the Cloud API renders group mentions as "@<number>" inline in
+    // the text body; match the assistant's own number.
+    const digits = assistantPhone.replace(/\D/g, "");
+    return digits.length > 0 && content.includes(`@${digits}`);
+  })();
+
+  switch (groupPolicy) {
+    case "mention":
+    case "allowlist":
+      return isMention;
+    case "open":
+    default:
+      return true;
+  }
+}
+
 export function createWhatsAppWebhookHandler(
   config: GatewayConfig,
   caches?: { credentials?: CredentialCache; configFile?: ConfigFileCache },
@@ -169,6 +240,18 @@ export function createWhatsAppWebhookHandler(
           { whatsappMessageId },
           "Duplicate WhatsApp message ID, ignoring",
         );
+        continue;
+      }
+
+      // Hermes-parity admission gate (allowFrom / groupPolicy / mentions).
+      // Gated messages are dropped silently and the dedup mark advances so
+      // Meta retries do not re-deliver them.
+      if (!whatsappAdmissionAllows(event, caches?.configFile)) {
+        tlog.info(
+          { from, chatType: event.source.chatType },
+          "WhatsApp admission policy dropped message",
+        );
+        dedupCache.mark(whatsappMessageId);
         continue;
       }
 

@@ -179,7 +179,9 @@ async function performTtsRequest(
   if (outputParams.sample_rate != null) {
     params.set("sample_rate", String(outputParams.sample_rate));
   }
-  const url = `${DEEPGRAM_API_BASE}/v1/speak?${params.toString()}`;
+  // A configured apiBase (self-hosted / proxy) wins over the cloud default.
+  const apiBase = config.apiBase?.trim() || DEEPGRAM_API_BASE;
+  const url = `${apiBase}/v1/speak?${params.toString()}`;
 
   log.info(
     {

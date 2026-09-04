@@ -112,6 +112,9 @@ async function performSynthesis(
     ...config,
     referenceId,
     format: effectiveFormat,
+    // Custom API base (self-hosted / proxy) — the client falls back to
+    // https://api.fish.audio when unset.
+    apiBase: config.apiBase,
   };
 
   const streaming = Boolean(onChunk);

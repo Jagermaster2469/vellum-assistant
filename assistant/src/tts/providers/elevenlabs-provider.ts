@@ -305,9 +305,12 @@ async function performTtsRequest(
   const voiceId = resolveVoiceId(request, config);
   const outputFormat = resolveOutputFormat(request);
 
+  // A configured apiBase (self-hosted / proxy) wins over the cloud default.
+  const apiBase = config.apiBase?.trim() || ELEVENLABS_API_BASE;
+
   const url = stream
-    ? `${ELEVENLABS_API_BASE}/v1/text-to-speech/${voiceId}/stream?output_format=${outputFormat}`
-    : `${ELEVENLABS_API_BASE}/v1/text-to-speech/${voiceId}?output_format=${outputFormat}`;
+    ? `${apiBase}/v1/text-to-speech/${voiceId}/stream?output_format=${outputFormat}`
+    : `${apiBase}/v1/text-to-speech/${voiceId}?output_format=${outputFormat}`;
 
   // Streaming defaults to the low-latency flash model; batch keeps
   // multilingual for quality. A configured voiceModelId always wins.

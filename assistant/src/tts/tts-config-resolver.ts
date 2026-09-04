@@ -21,6 +21,12 @@ export interface ResolvedTtsConfig {
 
   /** Provider-specific settings for the active provider. */
   providerConfig: Record<string, unknown>;
+
+  /**
+   * Custom API base URL for the resolved provider, when configured.
+   * Empty / unset means the provider adapter's cloud default applies.
+   */
+  apiBase?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -50,7 +56,14 @@ export function resolveTtsConfig(
   // Resolve provider-specific config from the canonical providers map.
   const providerConfig = resolveProviderConfig(config, provider);
 
-  return { provider, providerConfig };
+  // Surface a configured custom API base (BYOK self-hosted / proxy
+  // endpoints). Empty / unset means the adapter's cloud default applies.
+  const apiBase =
+    typeof providerConfig.apiBase === "string" && providerConfig.apiBase.trim()
+      ? providerConfig.apiBase.trim()
+      : undefined;
+
+  return { provider, providerConfig, apiBase };
 }
 
 // ---------------------------------------------------------------------------

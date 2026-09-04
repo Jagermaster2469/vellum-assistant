@@ -301,12 +301,17 @@ export function normalizeWhatsAppWebhook(
         }
       }
 
-      // from is the sender's WhatsApp phone number in E.164 format
+      // `from` carries the sender's WhatsApp phone number (E.164) for 1:1
+      // chats and the GROUP id (suffixed "@g.us") for group messages — the
+      // Cloud API does not put the member's number in `from` for groups. The
+      // group sender arrives through `contacts[0].wa_id` instead.
       const from = msg.from;
+      const isGroup = from.endsWith("@g.us");
+      const senderId = isGroup ? (value.contacts?.[0]?.wa_id ?? from) : from;
 
       // Resolve display name from contacts array when available
-      const contact = value.contacts?.find((c) => c.wa_id === from);
-      const displayName = contact?.profile?.name ?? from;
+      const contact = value.contacts?.find((c) => c.wa_id === senderId);
+      const displayName = contact?.profile?.name ?? senderId;
 
       results.push({
         whatsappMessageId: msg.id,
@@ -318,22 +323,26 @@ export function normalizeWhatsAppWebhook(
           message: {
             eventKind: callbackData ? "button" : "message",
             content: body,
-            // Use sender phone number as the chat identifier for 1:1 conversations
+            // 1:1 chats key the conversation on the sender's number; groups
+            // key it on the group id so every member shares one conversation
+            // (the gateway prefixes the id namespace downstream).
             conversationExternalId: from,
             externalMessageId: msg.id,
             ...(callbackData ? { callbackData } : {}),
             ...(attachments && attachments.length > 0 ? { attachments } : {}),
           },
           actor: {
-            actorExternalId: from,
+            actorExternalId: senderId,
             displayName,
           },
           source: {
             updateId: msg.id,
             messageId: msg.id,
-            chatType: "private",
-            // WhatsApp reaches the assistant only one-to-one.
-            conversationType: "dm" as const,
+            chatType: isGroup ? "group" : "private",
+            // WhatsApp groups are multi-party and private (invite-only), the
+            // same mapping Telegram groups use. DMs stay "dm".
+            conversationType: isGroup ? ("private" as const) : ("dm" as const),
+            ...(isGroup ? { isDirectMessage: false as const } : {}),
           },
           raw: payload,
         },

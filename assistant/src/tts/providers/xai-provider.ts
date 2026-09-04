@@ -61,6 +61,25 @@ const XAI_API_BASE = "https://api.x.ai";
 const XAI_WS_BASE = "wss://api.x.ai/v1/tts";
 
 /**
+ * Resolve the WebSocket base for streaming synthesis.
+ *
+ * When a custom `apiBase` is configured (self-hosted / proxy), the
+ * equivalent WebSocket origin is derived by swapping the scheme
+ * (`https://…` → `wss://…`, `http://…` → `ws://…`). Otherwise the xAI
+ * cloud endpoint is used.
+ */
+function resolveStreamBase(apiBase: string | undefined): string {
+  const base = apiBase?.trim();
+  if (!base) {
+    return XAI_WS_BASE;
+  }
+  const wsBase = base
+    .replace(/^https:\/\//, "wss://")
+    .replace(/^http:\/\//, "ws://");
+  return `${wsBase.replace(/\/+$/, "")}/v1/tts`;
+}
+
+/**
  * Sample rates xAI TTS accepts (both REST and WS). Per
  * https://docs.x.ai/developers/model-capabilities/audio/text-to-speech these
  * are 8/16/22.05/24/44.1/48 kHz; the list intentionally matches the
@@ -207,7 +226,7 @@ function buildStreamUrl(
   if (outputParams.bit_rate != null) {
     params.set("bit_rate", String(outputParams.bit_rate));
   }
-  return `${XAI_WS_BASE}?${params.toString()}`;
+  return `${resolveStreamBase(config.apiBase)}?${params.toString()}`;
 }
 
 export function createXaiProvider(
@@ -232,6 +251,10 @@ export function createXaiProvider(
       const output = resolveOutputParams(request, config);
       const voiceId = resolveVoiceId(request, config);
 
+      // A configured apiBase (self-hosted / proxy) wins over the cloud
+      // default.
+      const apiBase = config.apiBase?.trim() || XAI_API_BASE;
+
       const body = {
         text: request.text,
         voice_id: voiceId,
@@ -255,7 +278,7 @@ export function createXaiProvider(
 
       let response: Response;
       try {
-        response = await fetch(`${XAI_API_BASE}/v1/tts`, {
+        response = await fetch(`${apiBase}/v1/tts`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

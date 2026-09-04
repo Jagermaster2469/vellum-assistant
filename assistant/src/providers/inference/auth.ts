@@ -168,6 +168,13 @@ export const ConnectionModelSchema = z
   .object({
     id: z.string().min(1),
     displayName: z.string().min(1).optional(),
+    /**
+     * User-declared vision capability for this custom-endpoint model. The
+     * catalog cannot know what a self-declared model supports, so the
+     * capability is opt-in: set true to let vision call-sites send images to
+     * it. Absent = treated as non-vision (fail-safe to captioning).
+     */
+    supportsVision: z.boolean().optional(),
   })
   .meta({ id: "ConnectionModel" });
 export type ConnectionModel = z.infer<typeof ConnectionModelSchema>;

@@ -34,6 +34,27 @@ export const EndpointCheckSchema = z
 
 export type EndpointCheck = z.infer<typeof EndpointCheckSchema>;
 
+/**
+ * In-process cache of the last probe verdict per endpoint, so a save-heavy
+ * settings session does not re-fire a network probe (and its warning toast)
+ * on every edit. Keyed by baseUrl + model; verdicts expire after a short TTL
+ * so a genuine change upstream (key rotation, endpoint coming online) is
+ * still detected. Cleared alongside the provider registry on config changes.
+ */
+const probeVerdictCache = new Map<
+  string,
+  { verdict: EndpointCheck; at: number }
+>();
+const PROBE_VERDICT_TTL_MS = 10 * 60 * 1000;
+
+export function clearProbeVerdictCache(): void {
+  probeVerdictCache.clear();
+}
+
+function probeCacheKey(baseUrl: string, model: string): string {
+  return `${baseUrl.replace(/\/+$/, "")}|${model}`;
+}
+
 function hintForStatus(status: number): string {
   if (status === 404) {
     return "The endpoint returned 404 for a test request: check the base path for this provider (e.g. NVIDIA needs /v1, OpenRouter needs /api/v1). Some providers gate requests behind auth, so this may be a false alarm.";
@@ -58,10 +79,24 @@ export async function testInferenceConnection(
     models?: ConnectionModel[] | null;
   },
   fetchImpl: typeof fetch = fetch,
+  opts: { force?: boolean } = {},
 ): Promise<EndpointCheck | null> {
   const model = connection.models?.[0]?.id;
   if (!connection.baseUrl || !model) {
     return null;
+  }
+
+  // Fresh verdict reuse: same endpoint + model within the TTL returns the
+  // cached check without a network round-trip. A failing probe still reports
+  // the original failure (callers own the presentation), but repeated saves
+  // no longer re-probe and the caller can suppress repeat toasts.
+  if (!opts.force) {
+    const cached = probeVerdictCache.get(
+      probeCacheKey(connection.baseUrl, model),
+    );
+    if (cached != null && Date.now() - cached.at < PROBE_VERDICT_TTL_MS) {
+      return cached.verdict;
+    }
   }
 
   const resolved = await resolveAuth(connection.auth, connection.provider, {
@@ -88,22 +123,36 @@ export async function testInferenceConnection(
     });
     void res.body?.cancel();
     if (res.ok) {
-      return { ok: true, status: res.status, resolved_url: url };
+      const verdict: EndpointCheck = {
+        ok: true,
+        status: res.status,
+        resolved_url: url,
+      };
+      probeVerdictCache.set(probeCacheKey(connection.baseUrl, model), {
+        verdict,
+        at: Date.now(),
+      });
+      return verdict;
     }
-    return {
+    const verdict: EndpointCheck = {
       ok: false,
       status: res.status,
       resolved_url: url,
       error_class: "http_error",
       hint: hintForStatus(res.status),
     };
+    probeVerdictCache.set(probeCacheKey(connection.baseUrl, model), {
+      verdict,
+      at: Date.now(),
+    });
+    return verdict;
   } catch (err) {
     const isTimeout = err instanceof Error && err.name === "TimeoutError";
     log.info(
       { url, error: err instanceof Error ? err.message : String(err) },
       "Endpoint probe failed to reach the endpoint",
     );
-    return {
+    const verdict: EndpointCheck = {
       ok: false,
       resolved_url: url,
       error_class: isTimeout ? "timeout" : "network",
@@ -111,5 +160,10 @@ export async function testInferenceConnection(
         ? `The endpoint did not respond within ${PROBE_TIMEOUT_MS / 1000}s for a test request.`
         : `Could not reach the endpoint for a test request: ${err instanceof Error ? err.message : String(err)}`,
     };
+    probeVerdictCache.set(probeCacheKey(connection.baseUrl, model), {
+      verdict,
+      at: Date.now(),
+    });
+    return verdict;
   }
 }
