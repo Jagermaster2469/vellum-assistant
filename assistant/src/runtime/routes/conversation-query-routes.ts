@@ -461,9 +461,12 @@ async function handleSetEmbeddingConfig({ body }: RouteHandlerArgs) {
   if (!body || typeof body !== "object") {
     throw new BadRequestError("Request body is required");
   }
-  const { provider, model } = body as {
+  const { provider, model, apiBase, baseUrl, endpoint } = body as {
     provider?: string;
     model?: string;
+    apiBase?: string;
+    baseUrl?: string;
+    endpoint?: string;
   };
   if (!provider || typeof provider !== "string") {
     throw new BadRequestError("Missing required field: provider");
@@ -476,8 +479,19 @@ async function handleSetEmbeddingConfig({ body }: RouteHandlerArgs) {
   if (model !== undefined && typeof model !== "string") {
     throw new BadRequestError("Field 'model' must be a string");
   }
+  const resolvedApiBase = (apiBase ?? baseUrl ?? endpoint) as
+    | string
+    | undefined;
+  if (resolvedApiBase !== undefined && typeof resolvedApiBase !== "string") {
+    throw new BadRequestError("Field 'apiBase' must be a string");
+  }
   try {
-    return await setEmbeddingConfig(provider, model, getModelSetContext());
+    return await setEmbeddingConfig(
+      provider,
+      model,
+      resolvedApiBase,
+      getModelSetContext(),
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new InternalError(`Failed to set embedding config: ${message}`);
@@ -2394,6 +2408,9 @@ export const ROUTES: RouteDefinition[] = [
     requestBody: z.object({
       provider: z.string(),
       model: z.string().optional(),
+      apiBase: z.string().optional(),
+      baseUrl: z.string().optional(),
+      endpoint: z.string().optional(),
     }),
     handler: handleSetEmbeddingConfig,
   },

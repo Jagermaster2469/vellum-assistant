@@ -39,6 +39,12 @@ const EMBEDDING_PROVIDER_CATALOG = [
     requiresKey: true,
   },
   {
+    id: "openai-compatible",
+    displayName: "OpenAI Compatible",
+    defaultModel: "text-embedding-3-small",
+    requiresKey: false,
+  },
+  {
     id: "gemini",
     displayName: "Gemini",
     defaultModel: "gemini-embedding-2",
@@ -59,6 +65,7 @@ const EMBEDDING_PROVIDER_CATALOG = [
 const PROVIDER_MODEL_FIELD: Record<string, string> = {
   local: "localModel",
   openai: "openaiModel",
+  "openai-compatible": "openaiModel",
   gemini: "geminiModel",
   ollama: "ollamaModel",
 };
@@ -70,6 +77,7 @@ const PROVIDER_MODEL_FIELD: Record<string, string> = {
 export async function getEmbeddingConfigInfo(): Promise<{
   provider: string;
   model: string | null;
+  apiBase: string | null;
   activeProvider: string | null;
   activeModel: string | null;
   availableProviders: typeof EMBEDDING_PROVIDER_CATALOG;
@@ -88,6 +96,11 @@ export async function getEmbeddingConfigInfo(): Promise<{
   return {
     provider: embeddingConfig.provider,
     model: typeof model === "string" ? model : null,
+    apiBase:
+      typeof embeddingConfig.apiBase === "string" &&
+      embeddingConfig.apiBase.trim()
+        ? embeddingConfig.apiBase.trim()
+        : null,
     activeProvider: backendStatus.provider,
     activeModel: backendStatus.model,
     availableProviders: EMBEDDING_PROVIDER_CATALOG,
@@ -106,6 +119,7 @@ export async function getEmbeddingConfigInfo(): Promise<{
 export async function setEmbeddingConfig(
   provider: string,
   model: string | undefined,
+  apiBase: string | undefined,
   ctx: ModelSetContext,
 ): Promise<ReturnType<typeof getEmbeddingConfigInfo>> {
   const validProviders = new Set<string>(VALID_MEMORY_EMBEDDING_PROVIDERS);
@@ -130,6 +144,15 @@ export async function setEmbeddingConfig(
     }
   }
 
+  if (apiBase !== undefined) {
+    const trimmed = apiBase.trim();
+    if (trimmed === "") {
+      deleteMemoryEmbeddingField(raw, "apiBase");
+    } else {
+      setMemoryEmbeddingField(raw, "apiBase", trimmed);
+    }
+  }
+
   // Suppress the file watcher callback — we handle the reload ourselves.
   const wasSuppressed = ctx.suppressConfigReload;
   ctx.setSuppressConfigReload(true);
@@ -150,7 +173,7 @@ export async function setEmbeddingConfig(
   clearEmbeddingBackendCache();
   ctx.updateConfigFingerprint();
 
-  log.info({ provider, model }, "Embedding config updated");
+  log.info({ provider, model, apiBase }, "Embedding config updated");
 
   return getEmbeddingConfigInfo();
 }
