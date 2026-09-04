@@ -84,6 +84,15 @@ export const FETCH_PROVIDER_CATALOG: readonly FetchProviderCatalogEntry[] = [
     supportsApiBase: true,
     defaultApiBase: "https://api.fastcrw.com",
   },
+  {
+    id: "browser-use",
+    displayName: "Browser Use",
+    displayNameLong: "Browser Use (local browser automation)",
+    // Local CDP-backed browser (Playwright / extension / cdp-inspect backends
+    // from the vellum-browser-use stack). Renders JavaScript like the hosted
+    // scrapers but runs on the user's own machine — no API key.
+    kind: "builtin",
+  },
 ];
 
 /** Provider ids accepted by the web-fetch config schema. */

@@ -10,7 +10,7 @@ export type WebSearchProviderId =
   | "fastcrw"
   | "x";
 
-export type WebFetchProviderId = "default" | "firecrawl" | "fastcrw";
+export type WebFetchProviderId = "default" | "firecrawl" | "fastcrw" | "browser-use";
 
 export interface WebSearchResultItem {
   rank: number;

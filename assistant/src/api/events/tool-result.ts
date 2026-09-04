@@ -60,6 +60,7 @@ export const WebFetchProviderIdSchema = z.enum([
   "default",
   "firecrawl",
   "fastcrw",
+  "browser-use",
 ]);
 
 export type WebFetchProviderId = z.infer<typeof WebFetchProviderIdSchema>;

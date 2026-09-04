@@ -6,6 +6,7 @@ export const WEB_FETCH_PROVIDER_IDS: readonly string[] = [
   "default",
   "firecrawl",
   "fastcrw",
+  "browser-use",
 ];
 
 /** Short display name used in picker UI. */
@@ -15,6 +16,7 @@ export const WEB_FETCH_PROVIDER_DISPLAY_NAMES: Readonly<
   default: "Vellum",
   firecrawl: "Firecrawl",
   fastcrw: "fastCRW",
+  "browser-use": "Browser Use",
 };
 
 /** Placeholder hint shown in the API-key input. BYOK providers only. */

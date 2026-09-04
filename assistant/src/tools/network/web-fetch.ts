@@ -1123,7 +1123,11 @@ interface FirecrawlScrapeResponse {
 
 function getWebFetchProvider(): WebFetchProviderId {
   const configured = getConfig().services["web-fetch"]?.provider ?? "default";
-  if (configured === "firecrawl" || configured === "fastcrw") {
+  if (
+    configured === "firecrawl" ||
+    configured === "fastcrw" ||
+    configured === "browser-use"
+  ) {
     return configured;
   }
   return "default";
@@ -1511,6 +1515,65 @@ export async function executeFastcrwScrape(
   });
 }
 
+/**
+ * Fetch a URL through the local Browser Use (CDP-backed) browser stack and
+ * return extracted page text, or `null` when no browser backend is available
+ * (caller then falls back to the built-in fetcher).
+ *
+ * Uses the same `executeBrowserNavigate` + `executeBrowserExtract` primitives
+ * the `browser_*` tools use, driven by the `vellum-browser-use` skill. The
+ * browser session is scoped to the conversation and cleaned up so a `web_fetch`
+ * does not leave a tab open.
+ */
+async function executeBrowserUseFetch(
+  input: Record<string, unknown>,
+  context: ToolContext,
+): Promise<ToolExecutionResult | null> {
+  const url = input.url;
+  if (typeof url !== "string" || !url) {
+    return null;
+  }
+  const browserModule = await import("../browser/browser-execution.js").catch(
+    (err) => {
+      log.debug(
+        { err },
+        "web_fetch Browser Use: browser execution module unavailable",
+      );
+      return null;
+    },
+  );
+  if (!browserModule) {
+    return null;
+  }
+  const { executeBrowserNavigate, executeBrowserExtract, executeBrowserClose } =
+    browserModule;
+
+  const navInput: Record<string, unknown> = {
+    url,
+    ...(input.allow_private_network === true
+      ? { allow_private_network: true }
+      : {}),
+  };
+  const nav = await executeBrowserNavigate(navInput, context);
+  if (nav.isError) {
+    // A mode/backend failure here means no browser is reachable; treat as
+    // "fall back" rather than surfacing a hard error to the chat caller.
+    return null;
+  }
+
+  const extractResult = await executeBrowserExtract(
+    { include_links: false },
+    context,
+  );
+  // Best-effort teardown so the page/tab is not left open for this turn.
+  try {
+    await executeBrowserClose({}, context);
+  } catch {
+    // Ignore teardown errors; extraction already produced the result.
+  }
+  return extractResult;
+}
+
 export const webFetchTool = {
   name: "web_fetch",
   description:
@@ -1559,6 +1622,24 @@ export const webFetchTool = {
     context: ToolContext,
   ): Promise<ToolExecutionResult> {
     const fetchProvider = getWebFetchProvider();
+    // Browser Use: route the fetch through the local CDP-backed browser
+    // (the vellum-browser-use stack: Playwright / Chrome extension /
+    // cdp-inspect backends). This renders JavaScript like a hosted scraper
+    // but runs entirely on the user's machine and requires no API key. It is
+    // a builtin provider, so it skips the hosted-scraper key/private-host gate
+    // and always attempts the browser path first (falling back to the built-in
+    // fetcher if no browser backend is available).
+    if (fetchProvider === "browser-use") {
+      const browserResult = await executeBrowserUseFetch(input, context);
+      if (browserResult) {
+        return browserResult;
+      }
+      // No browser backend available — fall through to the built-in fetcher.
+      log.info(
+        { provider: fetchProvider },
+        "web_fetch Browser Use had no available browser backend; falling back to the built-in fetcher",
+      );
+    }
     if (
       (fetchProvider === "firecrawl" || fetchProvider === "fastcrw") &&
       (await canRouteToHostedScraper(input))

@@ -4212,6 +4212,7 @@ paths:
                       - platform
                       - a2a
                       - discord
+                      - buzz
                       - plugin
                   assistantId:
                     type: string
@@ -4640,6 +4641,7 @@ paths:
                             - platform
                             - a2a
                             - discord
+                            - buzz
                             - plugin
                         ready:
                           type: boolean
@@ -4764,6 +4766,7 @@ paths:
                     - platform
                     - a2a
                     - discord
+                    - buzz
                     - plugin
                 includeRemote:
                   description: Include remote checks (default true)
@@ -4795,6 +4798,7 @@ paths:
                             - platform
                             - a2a
                             - discord
+                            - buzz
                             - plugin
                         ready:
                           type: boolean
@@ -5116,6 +5120,12 @@ paths:
                   type: string
                 model:
                   type: string
+                apiBase:
+                  type: string
+                baseUrl:
+                  type: string
+                endpoint:
+                  type: string
               required:
                 - provider
       responses:
@@ -5223,6 +5233,7 @@ paths:
                     - vellum
                     - together
                     - vercel-ai-gateway
+                    - openai-compatible
                     - minimax
                     - atlascloud
                     - baseten
@@ -7264,6 +7275,7 @@ paths:
               - platform
               - a2a
               - discord
+              - buzz
               - plugin
           description:
             Filter by origin channel. When provided, only conversations with this exact origin_channel value are
@@ -7427,6 +7439,7 @@ paths:
                                 - platform
                                 - a2a
                                 - discord
+                                - buzz
                                 - plugin
                             - type: "null"
                         assistantAttention:
@@ -7793,6 +7806,7 @@ paths:
                               - platform
                               - a2a
                               - discord
+                              - buzz
                               - plugin
                           - type: "null"
                       assistantAttention:
@@ -9055,6 +9069,7 @@ paths:
                               - platform
                               - a2a
                               - discord
+                              - buzz
                               - plugin
                           - type: "null"
                       assistantAttention:
@@ -20295,6 +20310,7 @@ paths:
                                           - keenable
                                           - firecrawl
                                           - fastcrw
+                                          - x
                                       resultCount:
                                         type: number
                                       durationMs:
@@ -20348,6 +20364,7 @@ paths:
                                           - default
                                           - firecrawl
                                           - fastcrw
+                                          - browser-use
                                       status:
                                         type: number
                                       contentType:
@@ -20806,6 +20823,7 @@ paths:
                                                   - keenable
                                                   - firecrawl
                                                   - fastcrw
+                                                  - x
                                               resultCount:
                                                 type: number
                                               durationMs:
@@ -20859,6 +20877,7 @@ paths:
                                                   - default
                                                   - firecrawl
                                                   - fastcrw
+                                                  - browser-use
                                               status:
                                                 type: number
                                               contentType:
@@ -23431,6 +23450,7 @@ paths:
                     - platform
                     - a2a
                     - discord
+                    - buzz
                     - plugin
                     - scheduler
                     - watcher
@@ -36612,6 +36632,8 @@ components:
         displayName:
           type: string
           minLength: 1
+        supportsVision:
+          type: boolean
       required:
         - id
     TelemetryJsonValue:
@@ -36774,6 +36796,7 @@ components:
                     - vellum
                     - together
                     - vercel-ai-gateway
+                    - openai-compatible
                     - minimax
                     - atlascloud
                     - baseten
@@ -37158,6 +37181,7 @@ components:
                 - vellum
                 - together
                 - vercel-ai-gateway
+                - openai-compatible
                 - minimax
                 - atlascloud
                 - baseten
@@ -37719,6 +37743,8 @@ components:
         displayName:
           type: string
           minLength: 1
+        supportsVision:
+          type: boolean
       required:
         - id
       additionalProperties: false

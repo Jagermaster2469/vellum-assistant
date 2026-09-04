@@ -16,7 +16,11 @@ export type WebSearchProviderId =
   | "x";
 
 /** Provider that backed a `web_fetch` call. `default` is the built-in fetcher. */
-export type WebFetchProviderId = "default" | "firecrawl" | "fastcrw";
+export type WebFetchProviderId =
+  | "default"
+  | "firecrawl"
+  | "fastcrw"
+  | "browser-use";
 
 export interface WebSearchResultItem {
   rank: number; // 1-indexed
