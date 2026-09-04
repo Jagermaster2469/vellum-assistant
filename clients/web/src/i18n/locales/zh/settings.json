@@ -2249,6 +2249,7 @@
     "apiBasePlaceholder": "https://api.fastcrw.com",
     "apiKeyLabel": "API 密钥",
     "apiKeyPlaceholder": "输入您的 API 密钥",
+    "modelLabel": "模型",
     "configUpdateFailedToast": "更新助手配置失败。请重试。",
     "localPreferencesFailedToast": "已保存，但无法写入本地偏好设置。",
     "providerAriaLabel": "网页搜索提供商",

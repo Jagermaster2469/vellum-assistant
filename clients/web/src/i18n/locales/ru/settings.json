@@ -2252,6 +2252,7 @@
     "apiBasePlaceholder": "https://api.fastcrw.com",
     "apiKeyLabel": "API-ключ",
     "apiKeyPlaceholder": "API-ключ",
+    "modelLabel": "Модель",
     "configUpdateFailedToast": "Не удалось обновить конфигурацию ассистента. Повторите попытку.",
     "localPreferencesFailedToast": "Сохранено, но локальные предпочтения записать не удалось.",
     "providerAriaLabel": "Провайдер веб-поиска",

@@ -78,7 +78,7 @@ export function WebSearchCard() {
       );
     }
     const wsService = daemonConfig.services?.["web-search"] as
-      | { provider?: string; mode?: string; apiBase?: string }
+      | { provider?: string; mode?: string; apiBase?: string; model?: string }
       | undefined;
     // A config written by the legacy mode toggle marks managed via `mode`
     // while `provider` holds the BYOK restore value — the daemon routes it to
@@ -97,9 +97,14 @@ export function WebSearchCard() {
 
   const serverApiBase = useMemo((): string => {
     const wsService = daemonConfig?.services?.["web-search"] as
-      | { apiBase?: string }
-      | undefined;
+      { apiBase?: string } | undefined;
     return wsService?.apiBase ?? "";
+  }, [daemonConfig]);
+
+  const serverModel = useMemo((): string => {
+    const wsService = daemonConfig?.services?.["web-search"] as
+      { model?: string } | undefined;
+    return wsService?.model ?? "";
   }, [daemonConfig]);
 
   const [saving, setSaving] = useState(false);
@@ -108,6 +113,8 @@ export function WebSearchCard() {
   );
   const [webSearchApiBase, setDraftWebSearchApiBase] =
     useDraftOverride(serverApiBase);
+  const [webSearchModel, setDraftWebSearchModel] =
+    useDraftOverride(serverModel);
 
   const [webSearchApiKey, setWebSearchApiKey] = useState("");
 
@@ -127,10 +134,12 @@ export function WebSearchCard() {
   // --- Derived state ---
   const hasNewApiKey = webSearchApiKey.trim().length > 0;
   const trimmedApiBase = webSearchApiBase.trim();
+  const trimmedModel = webSearchModel.trim();
   const hasCustomApiBase = showsApiBase && trimmedApiBase.length > 0;
   const configChanged =
     webSearchProvider !== serverWebSearchProvider ||
-    (showsApiBase && trimmedApiBase !== serverApiBase.trim());
+    (showsApiBase && trimmedApiBase !== serverApiBase.trim()) ||
+    (showsApiBase && trimmedModel !== serverModel.trim());
   const needsKeyBeforeSave =
     requiresProviderCredential &&
     !isKeylessByok &&
@@ -167,6 +176,7 @@ export function WebSearchCard() {
         provider?: string;
         mode: "managed" | "your-own";
         apiBase?: string;
+        model?: string;
       } =
         webSearchProvider === "vellum"
           ? supportsWebSearchVellumProvider()
@@ -176,6 +186,7 @@ export function WebSearchCard() {
               provider: webSearchProvider,
               mode: "your-own",
               ...(showsApiBase ? { apiBase: trimmedApiBase } : {}),
+              ...(showsApiBase && trimmedModel ? { model: trimmedModel } : {}),
             };
       await configMutation
         .mutateAsync({
@@ -228,6 +239,7 @@ export function WebSearchCard() {
     webSearchProvider,
     showsApiBase,
     trimmedApiBase,
+    trimmedModel,
     t,
   ]);
 
@@ -238,12 +250,14 @@ export function WebSearchCard() {
     }
     setWebSearchApiKey("");
     setDraftWebSearchApiBase("");
+    setDraftWebSearchModel("");
     setDraftWebSearchProvider("inference-provider-native");
     setLocalSetting(LS_WEB_SEARCH_PROVIDER, "inference-provider-native");
   }, [
     webSearchProvider,
     setDraftWebSearchProvider,
     setDraftWebSearchApiBase,
+    setDraftWebSearchModel,
   ]);
 
   return (
@@ -274,25 +288,37 @@ export function WebSearchCard() {
         )}
 
         {showsApiBase && (
-          <div className="space-y-1">
-            <Input
-              label={t("webSearchCard.apiBaseLabel")}
-              type="url"
-              value={webSearchApiBase}
-              onChange={(e) => setDraftWebSearchApiBase(e.target.value)}
-              placeholder={
-                defaultApiBase || t("webSearchCard.apiBasePlaceholder")
-              }
-              fullWidth
-            />
-            {defaultApiBase ? (
-              <p className="text-body-small-lighter text-[var(--content-tertiary)]">
-                {t("webSearchCard.apiBaseHint", {
-                  defaultBase: defaultApiBase,
-                })}
-              </p>
-            ) : null}
-          </div>
+          <>
+            <div className="space-y-1">
+              <Input
+                label={t("webSearchCard.apiBaseLabel")}
+                type="url"
+                value={webSearchApiBase}
+                onChange={(e) => setDraftWebSearchApiBase(e.target.value)}
+                placeholder={
+                  defaultApiBase || t("webSearchCard.apiBasePlaceholder")
+                }
+                fullWidth
+              />
+              {defaultApiBase ? (
+                <p className="text-body-small-lighter text-[var(--content-tertiary)]">
+                  {t("webSearchCard.apiBaseHint", {
+                    defaultBase: defaultApiBase,
+                  })}
+                </p>
+              ) : null}
+            </div>
+            {webSearchProvider === "perplexity" && (
+              <Input
+                label={t("webSearchCard.modelLabel")}
+                type="text"
+                value={webSearchModel}
+                onChange={(e) => setDraftWebSearchModel(e.target.value)}
+                placeholder="sonar"
+                fullWidth
+              />
+            )}
+          </>
         )}
 
         {requiresProviderCredential && (

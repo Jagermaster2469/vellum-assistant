@@ -2270,6 +2270,7 @@
     "apiBasePlaceholder": "https://api.fastcrw.com",
     "apiKeyLabel": "Clave de API",
     "apiKeyPlaceholder": "Introduce tu clave de API",
+    "modelLabel": "Modelo",
     "configUpdateFailedToast": "No se pudo actualizar la configuración del asistente. Inténtalo de nuevo.",
     "localPreferencesFailedToast": "Guardado, pero no se pudieron escribir las preferencias locales.",
     "providerAriaLabel": "Proveedor de búsqueda web",

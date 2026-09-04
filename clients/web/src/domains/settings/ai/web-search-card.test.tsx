@@ -171,6 +171,7 @@ describe("WebSearchCard — provider-only configuration", () => {
       "Firecrawl",
       "Keenable",
       "fastCRW",
+      "X Search",
     ]);
   });
 
@@ -266,9 +267,7 @@ describe("WebSearchCard — provider-only configuration", () => {
     }) as HTMLButtonElement;
     expect(saveButton.disabled).toBe(true);
 
-    const apiBaseInput = screen.getByPlaceholderText(
-      "https://api.fastcrw.com",
-    );
+    const apiBaseInput = screen.getByPlaceholderText("https://api.fastcrw.com");
     fireEvent.change(apiBaseInput, {
       target: { value: "http://localhost:3000" },
     });
