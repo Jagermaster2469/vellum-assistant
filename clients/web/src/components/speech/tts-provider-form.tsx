@@ -53,10 +53,14 @@ import { TTS_PROVIDERS } from "@/lib/provider-catalogs";
  * `services.tts.providers.<id>`. Providers absent here have no voice selection
  * (`supportsVoiceSelection: false`), so nothing is written for them.
  */
-const TTS_VOICE_CONFIG_FIELD: Record<string, "voiceId" | "referenceId"> = {
+const TTS_VOICE_CONFIG_FIELD: Record<
+  string,
+  "voiceId" | "referenceId" | "voice"
+> = {
   elevenlabs: "voiceId",
   "fish-audio": "referenceId",
   xai: "voiceId",
+  openai: "voice",
 };
 
 export interface TtsProviderFormProps {
@@ -333,9 +337,7 @@ export function TtsProviderForm({
       return true;
     } catch (err) {
       toast.error(
-        err instanceof Error
-          ? err.message
-          : t("ttsProviderForm.saveFailed"),
+        err instanceof Error ? err.message : t("ttsProviderForm.saveFailed"),
       );
       return false;
     } finally {
@@ -555,9 +557,7 @@ export function TtsProviderForm({
       <div className="flex items-center gap-2">
         {!isManaged && (
           <Button variant="outlined" onClick={handleTest} disabled={testing}>
-            {testing
-              ? t("ttsProviderForm.testing")
-              : t("ttsProviderForm.test")}
+            {testing ? t("ttsProviderForm.testing") : t("ttsProviderForm.test")}
           </Button>
         )}
         <div className="flex items-center gap-3">

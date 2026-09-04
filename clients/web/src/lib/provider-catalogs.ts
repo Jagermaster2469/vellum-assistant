@@ -105,6 +105,20 @@ export const TTS_PROVIDERS: readonly TTSProvider[] = [
       linkLabel: "Open xAI Console",
     },
   },
+  {
+    id: "openai",
+    displayName: "OpenAI",
+    subtitle:
+      "OpenAI-compatible speech synthesis — OpenAI cloud or any OpenAI-compatible endpoint.",
+    supportsVoiceSelection: true,
+    apiKeyPlaceholder: "sk-… (or leave empty for keyless local endpoints)",
+    credentialsGuide: {
+      description:
+        "Sign in to OpenAI and copy your API key. For local servers, leave the key empty.",
+      url: "https://platform.openai.com/api-keys",
+      linkLabel: "Open OpenAI API Keys",
+    },
+  },
 ];
 
 // ---------------------------------------------------------------------------

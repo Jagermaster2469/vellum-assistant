@@ -162,6 +162,35 @@ describe("TextToSpeechCard — daemon provisioning on Save", () => {
     });
   });
 
+  test("OpenAI Save stores the key and maps Voice ID → services.tts.providers.openai.voice", async () => {
+    renderCard();
+
+    selectProvider("OpenAI");
+    fireEvent.change(screen.getByPlaceholderText(/keyless local endpoints/), {
+      target: { value: "sk-test" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Enter a voice ID"), {
+      target: { value: "alloy" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(configPatchCalls.length).toBe(1));
+    expect(credentialsSetCalls).toHaveLength(1);
+    expect(credentialsSetCalls[0]!.body).toMatchObject({
+      service: "openai",
+      field: "api_key",
+      value: "sk-test",
+    });
+    expect(configPatchCalls[0]!.body).toMatchObject({
+      services: {
+        tts: {
+          provider: "openai",
+          providers: { openai: { voice: "alloy" } },
+        },
+      },
+    });
+  });
+
   test("does not clobber a daemon-set provider when only the key changes", async () => {
     // Daemon already has a provider configured elsewhere (CLI/other client).
     daemonConfigData = { services: { tts: { provider: "fish-audio" } } };
