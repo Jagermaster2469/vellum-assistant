@@ -582,6 +582,8 @@
   },
   "sttProviderForm": {
     "apiKeyLabel": "Clave de API",
+    "baseUrlLabel": "Base de la API",
+    "baseUrlPlaceholder": "https://tu-endpoint.ejemplo.com",
     "apiKeyPlaceholderReplace": "••••••••  (Introduce una clave nueva para reemplazarla)",
     "providerAriaLabel": "Proveedor de STT",
     "providerLabel": "Proveedor",

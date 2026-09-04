@@ -102,9 +102,8 @@ mock.module("@/generated/daemon/sdk.gen", () => ({
   },
 }));
 
-const { SpeechToTextCard } = await import(
-  "@/domains/settings/ai/speech-to-text-card"
-);
+const { SpeechToTextCard } =
+  await import("@/domains/settings/ai/speech-to-text-card");
 const { LS_STT_PROVIDER } = await import("@/utils/local-settings-keys");
 const { changeLocale } = await import("@/i18n");
 
@@ -244,6 +243,25 @@ describe("SpeechToTextCard — macOS Native Dictation option", () => {
     });
   });
 
+  test("a custom base URL is written with the provider, and cleared with empty", async () => {
+    renderCard();
+
+    const baseInput = screen.getByPlaceholderText(
+      "https://your-endpoint.example.com",
+    );
+    fireEvent.change(baseInput, {
+      target: { value: "http://127.0.0.1:11434/v1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(configPatchCalls.length).toBe(1));
+    expect(configPatchCalls[0]!.body).toMatchObject({
+      services: {
+        stt: { provider: "deepgram", baseUrl: "http://127.0.0.1:11434/v1" },
+      },
+    });
+  });
+
   test("a stored native choice falls back to the default provider off Electron", () => {
     localStorage.setItem(LS_STT_PROVIDER, "macos-native");
     renderCard();
@@ -283,8 +301,7 @@ describe("SpeechToTextCard — macOS Native Dictation option", () => {
     // The provider is unchanged and the daemon already has one, so no config
     // PATCH must fire (which would re-assert / risk clobbering the provider).
     const sttBody = configPatchCalls[0]?.body as
-      | { services?: { stt?: Record<string, unknown> } }
-      | undefined;
+      { services?: { stt?: Record<string, unknown> } } | undefined;
     expect(sttBody?.services?.stt ?? {}).not.toHaveProperty("provider");
   });
 

@@ -582,6 +582,8 @@
   },
   "sttProviderForm": {
     "apiKeyLabel": "API 密钥",
+    "baseUrlLabel": "API 基址",
+    "baseUrlPlaceholder": "https://your-endpoint.example.com",
     "apiKeyPlaceholderReplace": "•••••••• (输入新密钥以替换)",
     "providerAriaLabel": "语音转文本提供商",
     "providerLabel": "提供商",

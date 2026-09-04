@@ -144,8 +144,7 @@ export function SttProviderForm({
   // `services.stt` falls under the ConfigGetResponse index signature
   // (`unknown`), so narrow it explicitly to read the provider.
   const daemonStt = daemonConfig?.services?.stt as
-    | { provider?: string; mode?: string }
-    | undefined;
+    { provider?: string; mode?: string; baseUrl?: string } | undefined;
   // A config written by the legacy mode toggle marks managed via `mode` while
   // `provider` holds the BYOK restore value — the daemon routes it to Vellum,
   // so the form must render it as Vellum too.
@@ -203,6 +202,9 @@ export function SttProviderForm({
     (STT_DAEMON_PROVIDER[draftProvider]?.provider === languageProviderId ||
       (!!daemonSttProvider && !CARD_ID_BY_DAEMON_PROVIDER[daemonSttProvider]));
   const [apiKeyText, setApiKeyText] = useState("");
+  const [baseUrlText, setBaseUrlText] = useDraftOverride(
+    daemonStt?.baseUrl ?? "",
+  );
   const [providerHasKey, setProviderHasKey] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -241,11 +243,14 @@ export function SttProviderForm({
   const hasChanges = useMemo(() => {
     const providerChanged = draftProvider !== serverProvider;
     const hasNewKey = apiKeyText.trim().length > 0;
-    return providerChanged || hasNewKey;
-  }, [draftProvider, serverProvider, apiKeyText]);
+    const baseUrlChanged =
+      baseUrlText.trim() !== (daemonStt?.baseUrl ?? "").trim();
+    return providerChanged || hasNewKey || baseUrlChanged;
+  }, [draftProvider, serverProvider, apiKeyText, baseUrlText, daemonStt]);
 
   const handleSave = useCallback(async (): Promise<boolean> => {
     const trimmedKey = apiKeyText.trim();
+    const trimmedBaseUrl = baseUrlText.trim();
 
     // Local settings back the client-side voice path; keep them in sync.
     setLocalSetting(LS_STT_PROVIDER, draftProvider);
@@ -257,6 +262,7 @@ export function SttProviderForm({
     // credential store (CES) and `services.stt` config, never localStorage.
     // macOS native dictation is client-only and has no daemon mapping.
     const daemon = STT_DAEMON_PROVIDER[draftProvider];
+    const baseUrlChanged = trimmedBaseUrl !== (daemonStt?.baseUrl ?? "").trim();
 
     setSaving(true);
     try {
@@ -315,7 +321,25 @@ export function SttProviderForm({
                 // BYOK choice unless reset.
                 provider: providerValue,
                 mode: providerValue === "vellum" ? "managed" : "your-own",
+                ...(baseUrlChanged ? { baseUrl: trimmedBaseUrl || null } : {}),
               },
+            },
+          },
+          throwOnError: false,
+        });
+        if (!cfgRes?.ok) {
+          throw new Error(
+            `Failed to save configuration (HTTP ${cfgRes?.status ?? "?"})`,
+          );
+        }
+      } else if (baseUrlChanged && !!daemon) {
+        // Provider unchanged: still push a baseUrl edit without touching the
+        // provider pair (deep-merge leaves the stored provider untouched).
+        const { response: cfgRes } = await configPatch({
+          path: { assistant_id: assistantId },
+          body: {
+            services: {
+              stt: { baseUrl: trimmedBaseUrl || null },
             },
           },
           throwOnError: false,
@@ -338,9 +362,7 @@ export function SttProviderForm({
       return true;
     } catch (err) {
       toast.error(
-        err instanceof Error
-          ? err.message
-          : t("sttProviderForm.saveFailed"),
+        err instanceof Error ? err.message : t("sttProviderForm.saveFailed"),
       );
       return false;
     } finally {
@@ -350,6 +372,8 @@ export function SttProviderForm({
     assistantId,
     draftProvider,
     apiKeyText,
+    baseUrlText,
+    daemonStt,
     selectedProvider,
     serverProvider,
     daemonHasProvider,
@@ -430,6 +454,19 @@ export function SttProviderForm({
             value={apiKeyText}
             onChange={(e) => setApiKeyText(e.target.value)}
             placeholder={apiKeyPlaceholder}
+            fullWidth
+          />
+        </div>
+      )}
+
+      {STT_DAEMON_PROVIDER[draftProvider]?.credentialService && (
+        <div className="space-y-1">
+          <Input
+            label={t("sttProviderForm.baseUrlLabel")}
+            type="url"
+            value={baseUrlText}
+            onChange={(e) => setBaseUrlText(e.target.value)}
+            placeholder={t("sttProviderForm.baseUrlPlaceholder")}
             fullWidth
           />
         </div>
