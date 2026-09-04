@@ -18,9 +18,9 @@
 - [ ] T010 Video generic endpoint docs + UI (adapter already supports apiBase/model/key for xAI shape)
 
 ## Phase 3: Verify + docs + UI
-- [x] T011 `assistant/scripts/verify-triples.ts` (per-function endpoint/model/key presence, keys redacted)
-- [ ] T012 Web UI triple editor reused per service (endpoint + model + key fields)
-- [ ] T013 Credential docs per function (vault path + env var + Settings path)
+- [x] T011 `assistant/scripts/verify-triples.ts` (per-function endpoint/model/key presence, keys redacted; ran offline OK)
+- [ ] T012 Web UI triple editor reused per service (endpoint + model + key fields; catalog-driven pickers already expose new openai entries)
+- [x] T013 Credential docs per function (`specs/002-model-triple/triple-map.md`: vault path + env + Settings path)
 
 ## Phase 4: Gates + push
 - [x] T014 `bunx tsgo --noEmit` clean (assistant)
